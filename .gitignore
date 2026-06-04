@@ -1,0 +1,17 @@
+# Maschinenlokaler Laufzeit-Zustand des Setups - NIE einchecken
+config.json
+secret.dpapi
+
+# Sicherheits-Sicherheitsnetz: keinerlei Secret-/Key-Artefakte
+*.dpapi
+*.pfx
+*.cer
+*.key
+secrets.*
+
+# OS / Editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vs/
+.idea/
