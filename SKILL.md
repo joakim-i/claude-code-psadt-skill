@@ -15,7 +15,7 @@ This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package*
 - ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
 - Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ (default `c:\Temp\PSADTv4\Output\`; actual value from the config via `Get-PsadtConfig`)
 - Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
-- Author ALWAYS assembled from config (`author.person` + `author.company`; default `Patrick Taubert, PHAT Consulting GmbH`); first script version `0.1`; changelog in the `.NOTES` header is mandatory
+- Author ALWAYS assembled from config (`author.person` + `author.company`, set during setup - no hard-coded default); first script version `0.1`; changelog in the `.NOTES` header is mandatory
 - Obtain app logo (PNG, transparent, high resolution) -> `Assets\` + `Output\<App>\`
 - Start Menu entries only, NO desktop icons
 - Build all three deployment types (Install/Uninstall/Repair) from the start and verify them via acid test
@@ -36,15 +36,15 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 - **Language - split by target:**
   - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
   - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
-- **Author ALWAYS:** `Patrick Taubert, PHAT Consulting GmbH` (field `AppScriptAuthor` in `$adtSession`).
+- **Author ALWAYS from config:** compose `AppScriptAuthor` (in `$adtSession`) from `author.person` + `author.company`, which the user sets during setup (`Get-PsadtConfig`). No hard-coded author.
 - **Script versioning (`AppScriptVersion` in `$adtSession`):**
   - The first version of a script is ALWAYS **`0.1`** (not 1.0.0).
   - Every substantively justified change increases the version number (small fixes/clarifications -> patch/minor, larger functional changes -> bigger jump). Purely cosmetic edits without functional relevance do not necessarily need to bump.
 - **Changelog is mandatory:** Every change to a script is documented in a **changelog in the script header (`.NOTES` block)** - one line per version: `Version (date, author): What was changed`. On every change, update the changelog entry AND `AppScriptVersion` together. Format:
   ```
   Changelog:
-  - 0.1 (YYYY-MM-DD, Patrick Taubert): Initial version.
-  - 0.2 (YYYY-MM-DD, Patrick Taubert): <what was changed>.
+  - 0.1 (YYYY-MM-DD, <author.person>): Initial version.
+  - 0.2 (YYYY-MM-DD, <author.person>): <what was changed>.
   ```
 
 ## Workflow (execute in this order)
@@ -145,9 +145,9 @@ AppRevision = '01'
 AppSuccessExitCodes = @(0, 1707)
 AppRebootExitCodes = @(1641, 3010)
 AppScriptVersion = '0.1'                              # first version ALWAYS 0.1, see conventions
-AppScriptAuthor = 'Patrick Taubert, PHAT Consulting GmbH'   # ALWAYS this author
+AppScriptAuthor = '<author.person>, <author.company>'   # from config (Get-PsadtConfig), set during setup
 ```
-And in the header comment (`.NOTES`) create the changelog: `- 0.1 (YYYY-MM-DD, Patrick Taubert): Initial version.`
+And in the header comment (`.NOTES`) create the changelog: `- 0.1 (YYYY-MM-DD, <author.person>): Initial version.`
 
 Verify right after scaffold:
 ```powershell
