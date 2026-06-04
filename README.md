@@ -44,8 +44,9 @@ description until a task makes it relevant, then the full body loads on demand.
   the package (correct `SetupFile`, size).
 - **App logo auto-fetch** — finds and downloads a license-clear logo (official vendor source or Wikimedia
   Commons), as a transparent high-resolution PNG, and verifies the alpha channel before use.
-- **Deliverable dossier (HTML)** — produces the Intune metadata, return-code map, detection rule, and a
-  ready-to-paste HTML app description for the Company Portal.
+- **Deliverable dossier** — produces the Intune metadata, return-code map, detection rule, and a
+  ready-to-paste **Markdown** app description for the Company Portal field (the dossier document itself
+  is HTML; the Intune description field supports only Markdown, not HTML).
 - **Guided testing & staged rollout** — DEV-VM cycles (silent, `.exe` launcher, SYSTEM context via
   PsExec), an Intune test-group assignment, then pilot → staged production.
 - **Troubleshooting** — decodes Intune error/HRESULT codes (e.g. `0x80070001`), maps symptoms to root

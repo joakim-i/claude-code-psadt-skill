@@ -821,14 +821,14 @@ Only when ALL lines are green: production rollout.
 
 ## Appendix F: Intune deployment dossier (upload template, to be filled in per app)
 
-Place this template as a full HTML file per app next to the `.intunewin` (`Intune-Dossier.html`). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
+Place this template as a full HTML file per app next to the `.intunewin` (`Intune-Dossier.html`). **Exception:** the F.2 description block is **Markdown**, because the Intune app description field supports only Markdown (not HTML). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
 
 ### F.1 App information
 
 | Intune field | Value | Notes |
 |---|---|---|
 | **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
-| **Description** | see F.2 (HTML block) | the first ~200 characters are the short preview in the CP |
+| **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
 | **Publisher** | `<Hersteller>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
 | **App version** | `<Major.Minor.Build.Rev>` | exact file version |
 | **Category** | e.g. Business, Development, Productivity, Communication | for CP navigation |
@@ -841,41 +841,40 @@ Place this template as a full HTML file per app next to the `.intunewin` (`Intun
 | **Logo** | `<pkg>\Assets\AppIcon.png` | 256x256 PNG transparent |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
-### F.2 Description HTML template (Company Portal)
+### F.2 Description Markdown template (Company Portal)
 
-The Intune description field has an HTML editor and renders HTML in the Company Portal. Copy the block 1:1, replace `<...>`.
+The Intune app description field supports **only Markdown** (not HTML) and renders it in the Company Portal. Copy the block 1:1, replace `<...>`.
 
 (end-user output — language.dossier, default German)
 
-```html
-<p><strong>&lt;AppName&gt;</strong> ist &lt;Ein-Satz-Zweck&gt;.</p>
+```markdown
+**<AppName>** ist <Ein-Satz-Zweck>.
 
-<p>&lt;Zwei-bis-drei-Sätze-Nutzenbeschreibung für Endbenutzer. Was bekommen sie, wofür brauchen sie das.&gt;</p>
+<Zwei-bis-drei-Sätze-Nutzenbeschreibung für Endbenutzer. Was bekommen sie, wofür brauchen sie das.>
 
-<p><strong>Was du bekommst</strong></p>
-<ul>
-  <li>&lt;Feature 1&gt;</li>
-  <li>&lt;Feature 2&gt;</li>
-  <li>&lt;Feature 3&gt;</li>
-  <li>&lt;ggf. Config / Branding&gt;</li>
-</ul>
+**Was du bekommst**
+- <Feature 1>
+- <Feature 2>
+- <Feature 3>
+- <ggf. Config / Branding>
 
-<p><strong>Was du brauchst</strong></p>
-<ul>
-  <li>Windows 11 (oder Windows 10 22H2+)</li>
-  <li>~&lt;X&gt; GB freier Speicherplatz auf <code>C:</code></li>
-  <li>Ca. <strong>&lt;N&gt;-&lt;M&gt; Minuten</strong> Installationsdauer</li>
-  <li><em>&lt;ggf. Kein Neustart erforderlich / Neustart empfohlen&gt;</em></li>
-</ul>
+**Was du brauchst**
+- Windows 11 (oder Windows 10 22H2+)
+- ~<X> GB freier Speicherplatz auf `C:`
+- Ca. **<N>-<M> Minuten** Installationsdauer
+- *<ggf. Kein Neustart erforderlich / Neustart empfohlen>*
 
-<p><strong>Nach der Installation</strong></p>
-<p>&lt;Was findet der User vor? Startmenü-Eintrag, Desktop-Shortcut, Config-Datei, Zugangsdaten?&gt;</p>
+**Nach der Installation**
 
-<p><strong>Deinstallation</strong></p>
-<p>&lt;Was passiert bei Deinstall? Bleiben User-Daten, werden sie entfernt, was soll der User vorher sichern?&gt;</p>
+<Was findet der User vor? Startmenü-Eintrag, Desktop-Shortcut, Config-Datei, Zugangsdaten?>
 
-<p><strong>Support</strong></p>
-<p>Bei Problemen bitte ein Ticket beim <strong>IT-Service-Desk</strong> eröffnen und - wenn möglich - die Logdateien unter <code>C:\Windows\Logs\Software\</code> anhängen. Weitere Hinweise im <a href="&lt;support-portal-url&gt;">Support-Portal</a>.</p>
+**Deinstallation**
+
+<Was passiert bei Deinstall? Bleiben User-Daten, werden sie entfernt, was soll der User vorher sichern?>
+
+**Support**
+
+Bei Problemen bitte ein Ticket beim **IT-Service-Desk** eröffnen und - wenn möglich - die Logdateien unter `C:\Windows\Logs\Software\` anhängen. Weitere Hinweise im [Support-Portal](<support-portal-url>).
 ```
 
 Check: the first paragraph must also be readable on its own (200-character short preview).

@@ -207,8 +207,9 @@ of baked into the prose.
 - Call `Invoke-IntuneWin32Upload.ps1`, show the result (app id + portal link).
 
 ### 6.4 HTML switch (new convention)
-- Dossier → `Intune-Dossier.html`, full HTML; description block as clean HTML (the Intune description
-  field has an HTML editor).
+- Dossier document → `Intune-Dossier.html`, full HTML. **Exception:** the app **description block** stays
+  **Markdown**, because the Intune app description field for the Company Portal supports only Markdown
+  (no HTML). So the dossier is HTML, but the description text pasted into Intune is Markdown.
 - Rewrite the conventions block, Phase 7 and anti-patterns from "Markdown" to "HTML".
 - German umlauts remain in the dossier; scripts stay EN/ASCII (encoding hygiene unchanged).
 

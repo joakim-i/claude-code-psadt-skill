@@ -14,7 +14,7 @@ This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package*
 **Binding conventions (details in the block below):**
 - ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
 - Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ (default `c:\Temp\PSADTv4\Output\`; actual value from the config via `Get-PsadtConfig`)
-- Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**); scripts on the other hand **English/ASCII**
+- Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
 - Author ALWAYS assembled from config (`author.person` + `author.company`; default `Patrick Taubert, PHAT Consulting GmbH`); first script version `0.1`; changelog in the `.NOTES` header is mandatory
 - Obtain app logo (PNG, transparent, high resolution) -> `Assets\` + `Output\<App>\`
 - Start Menu entries only, NO desktop icons
@@ -34,7 +34,7 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 ## Conventions (BINDING)
 
 - **Language - split by target:**
-  - **Intune description / dossier (`Intune-Dossier.html`, full HTML): language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
+  - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
   - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
 - **Author ALWAYS:** `Patrick Taubert, PHAT Consulting GmbH` (field `AppScriptAuthor` in `$adtSession`).
 - **Script versioning (`AppScriptVersion` in `$adtSession`):**
@@ -304,7 +304,7 @@ Get-Content "$env:TEMP\iw-check\IntuneWinPackage\Metadata\Detection.xml" | Selec
 
 ### 7. Intune dossier
 
-Use appendix F from the reference guide as a template: ALWAYS name the file **`Intune-Dossier.html`** (fixed name, NOT `<App>-IntuneDossier.html` or `Intune-App-Metadata.html` - the app name is already in the output sub-folder) and place it in the central `Output\<App>\` folder. The dossier is **full HTML**. Fill all tables (App Info, description HTML, Program, Return Codes incl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments). Let the user review, then he/she transfers the values 1:1 into the Intune Admin Center.
+Use appendix F from the reference guide as a template: ALWAYS name the file **`Intune-Dossier.html`** (fixed name, NOT `<App>-IntuneDossier.html` or `Intune-App-Metadata.html` - the app name is already in the output sub-folder) and place it in the central `Output\<App>\` folder. The dossier document is **full HTML**, with ONE exception: the **app description block** is **Markdown**, because the Intune app description field for the Company Portal supports only Markdown (no HTML) - see below. Fill all tables (App Info, description (Markdown block), Program, Return Codes incl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments). Let the user review, then he/she transfers the values 1:1 into the Intune Admin Center.
 
 The dossier language follows `language.dossier` (default German), and its umlauts stay (real ä, ö, ü, ß), because it is end-user output for the Company Portal.
 
@@ -326,28 +326,31 @@ The dossier language follows `language.dossier` (default German), and its umlaut
   ```
   Alpha MUST be True (otherwise no transparent background -> look for another file). The logo is uploaded separately in Intune in the **App information tab**, it is NOT part of the `.intunewin` (no repack needed).
 
-**App description ALWAYS in the dossier language with real umlauts (ä, ö, ü, ß)** - this is end-user text in the Company Portal, do NOT spell out ae/oe/ue. (Applies only to the dossier HTML; the scripts stay English/ASCII - see conventions.)
+**App description ALWAYS in the dossier language with real umlauts (ä, ö, ü, ß)** - this is end-user text in the Company Portal, do NOT spell out ae/oe/ue. (Applies to the dossier/description output; the scripts stay English/ASCII - see conventions.)
 
-**App description ALWAYS formatted as HTML** - the Intune description field has an HTML editor (toolbar) and renders it formatted in the Company Portal. NO plain free-text wall. Deliver the description block in the dossier as ready HTML that the user can paste 1:1 into the description field. Supported feature set (safe to use):
-- `<strong>` (bold) and `<em>` (italic) for emphasis
-- `<ul><li>...</li></ul>` (bulleted) and `<ol><li>...</li></ol>` (numbered) lists - ideal for requirements, set variables, what-happens steps
-- Links `<a href="https://...">Text</a>` for vendor/docs pages
-- Short `<p>` paragraphs instead of a block
+**App description ALWAYS formatted as Markdown** - the Intune app description field for the Company Portal supports **only Markdown, NOT HTML**, and renders the Markdown formatted in the Company Portal. NO plain free-text wall. Deliver the description block in the dossier as ready Markdown that the user can paste 1:1 into the description field. Supported feature set (safe to use):
+- **bold** and *italic* for emphasis
+- bulleted lists (`-`) and numbered lists (`1.`) - ideal for requirements, set variables, what-happens steps
+- Links `[Text](https://...)` for vendor/docs pages
+- Short paragraphs instead of a block
+- Use sparingly: headings and tables (rendering in the Company Portal varies) - prefer a bold line + list
 
 Recommended description structure (end-user output — language.dossier, default German; adapt per app):
-```html
-<p><strong>&lt;AppName&gt; &lt;Version&gt;</strong> – &lt;one-sentence value&gt;.</p>
-<p><strong>What this deployment does:</strong></p>
-<ul>
-  <li>&lt;install target / path&gt;</li>
-  <li>&lt;environment variables / registry / config set&gt;</li>
-  <li>&lt;notable side effects&gt;</li>
-</ul>
-<p><strong>Requirements:</strong></p>
-<ul><li>&lt;e.g. JDK, .NET, prior version&gt;</li></ul>
-<p><strong>On uninstall:</strong></p>
-<ul><li>&lt;what is removed&gt; / &lt;what is kept&gt;</li></ul>
-<p>More info: <a href="https://...">Vendor page</a></p>
+```markdown
+**<AppName> <Version>** - <one-sentence value>.
+
+**What this deployment does:**
+- <install target / path>
+- <environment variables / registry / config set>
+- <notable side effects>
+
+**Requirements:**
+- <e.g. JDK, .NET, prior version>
+
+**On uninstall:**
+- <what is removed> / <what is kept>
+
+More info: [Vendor page](https://...)
 ```
 
 Mandatory return codes that must always be included: `0 Success, 1707 Success, 3010 Soft reboot, 1641 Hard reboot, 1618 Retry, 60001 Failed, 60008 Failed` + installer-specific codes from the research.
@@ -419,7 +422,7 @@ Check logs in this order:
 - Assuming "runs locally = runs in Intune" - the launcher acid test is mandatory
 - Mixed detection (custom script + file rule in parallel)
 - Putting Extensions functions into the main script instead of the Extensions module
-- Writing the dossier in Markdown instead of HTML (the Intune description field has an HTML editor; the dossier is full HTML)
+- Formatting the Intune app description field with HTML - that field supports ONLY Markdown (the dossier document is HTML, but the description block pasted into the Intune field must be Markdown)
 - Reflexively setting install time to 120 min - 60 min is almost always right
 - Triggering fallback delete actions on the first negative async response (services need 30-60s after msiexec, build a retry loop)
 - Creating desktop icons (or leaving ones created by the installer) - Start Menu entries only, keep the desktop clean
