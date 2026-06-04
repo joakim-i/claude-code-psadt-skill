@@ -38,6 +38,7 @@ direct-upload capability via Microsoft Graph.
 | Auth method | Client secret (tenant id + client id in config.json, secret via DPAPI) |
 | Architecture | Hybrid: helper scripts for security/complex parts, wizard/customizing stays model-driven |
 | Content-prep tool | Skill-managed: auto-download into `tools/`, version-checked against the official MS repo |
+| PSADT module | Skill-managed: auto-installed from PSGallery if missing, version-synced — never a manual prerequisite |
 | Deliverable format | New convention: deliverables in **HTML** instead of Markdown (full dossier) |
 | Repo language | Everything in the repo is **English**; only generated dossier/description output is German |
 | License | MIT (`LICENSE`, author Patrick Taubert / PHAT Consulting GmbH) |
@@ -69,6 +70,7 @@ no conversion into a Claude Code plugin. Packaging as a plugin later would be a 
 └─ scripts/
    ├─ Get-PsadtConfig.ps1            (reads config.json -> object; reports missing fields)
    ├─ Set-PsadtConfig.ps1           (writes/updates config.json; DPAPI-encrypts secret)
+   ├─ Get-PsadtModule.ps1           (ensures PSAppDeployToolkit module installed + version-synced)
    ├─ Get-IntuneWinAppUtil.ps1      (ensures tool present + current vs official MS repo)
    ├─ Invoke-IntuneWin32Upload.ps1  (Graph upload: token -> app -> content -> blob -> commit -> assign)
    └─ Test-PsadtSetup.ps1           (auth smoke test: acquire token + 1 Graph GET)
@@ -128,7 +130,16 @@ distributed with the skill. Setup treats them as "create-if-missing".
 - Takes the secret as a parameter and **DPAPI-encrypts** it (scope CurrentUser) to `secret.dpapi`.
   The secret is never written to `config.json` or logs and never returned.
 
-### 5.3 `Get-IntuneWinAppUtil.ps1`
+### 5.3 `Get-PsadtModule.ps1`
+- Ensures the **PSAppDeployToolkit** module is available; installing it must never be a manual hurdle.
+- If missing: `Install-Module PSAppDeployToolkit -Scope CurrentUser -Force -AllowClobber` from the
+  PowerShell Gallery (ensures NuGet provider / trusts PSGallery non-interactively as needed).
+- If present: compares installed vs latest (the existing research step) and offers `Update-Module`
+  before scaffolding when they diverge.
+- Reports the resolved module version; clear message on install failure (offline / policy), without
+  blocking the rest of setup when a usable version already exists.
+
+### 5.4 `Get-IntuneWinAppUtil.ps1`
 - Ensures `tools/IntuneWinAppUtil.exe` is present and current.
 - Queries the official repo `microsoft/Microsoft-Win32-Content-Prep-Tool` for the latest release tag
   (currently `v1.8.7`); releases carry **no assets**, so the exe is fetched from the repo tree at the
@@ -136,7 +147,7 @@ distributed with the skill. Setup treats them as "create-if-missing".
 - Downloads if missing or outdated (compares stored `tooling.*` against latest), then records the new
   tag + blob sha. Reports "already current" otherwise.
 
-### 5.4 `Invoke-IntuneWin32Upload.ps1`
+### 5.5 `Invoke-IntuneWin32Upload.ps1`
 - Acquires an app-only token via client secret (tenant/client id from config, secret DPAPI-decrypted,
   in-memory only).
 - Creates the `win32LobApp`, creates a content version, uses the encryption metadata from the
@@ -147,11 +158,11 @@ distributed with the skill. Setup treats them as "create-if-missing".
   overwrite/supersedence.
 - Returns app id + portal link.
 
-### 5.5 `Test-PsadtSetup.ps1`
+### 5.6 `Test-PsadtSetup.ps1`
 - Auth smoke test: acquire token + a simple Graph GET (e.g. `/deviceAppManagement/mobileApps?$top=1`).
 - Clear diagnostics on failure (wrong secret / missing permission / missing admin consent).
 
-### 5.6 `references/app-registration.md`
+### 5.7 `references/app-registration.md`
 Short Entra app-registration checklist:
 1. Entra Admin Center → App registrations → New registration
 2. API permissions → Microsoft Graph → **Application** → `DeviceManagementApps.ReadWrite.All`
@@ -174,7 +185,9 @@ Short Entra app-registration checklist:
      DPAPI-encrypts it immediately (see 6.5 / section 7).
 - On Yes: run `Test-PsadtSetup.ps1`; red → clear message, `uploadEnabled` becomes `true` only after a
   green test.
-- Provision the content-prep tool via `Get-IntuneWinAppUtil.ps1` during setup.
+- Provision prerequisites during setup so neither is a manual hurdle: the **PSAppDeployToolkit module**
+  via `Get-PsadtModule.ps1` (install from PSGallery if missing) and the **content-prep tool** via
+  `Get-IntuneWinAppUtil.ps1`.
 - Explicitly re-triggerable ("psadt setup") → change individual values.
 - Links `references/app-registration.md`.
 
@@ -236,6 +249,8 @@ English. Author and version conventions (`0.1` start, mandatory changelog in `.N
 
 - Helper scripts: parse-clean (AST), DPAPI round-trip test (encrypt → decrypt → equal).
 - `Get`/`Set-PsadtConfig`: schema validation, partial updates, missing-field detection.
+- `Get-PsadtModule.ps1`: missing → installs from PSGallery; present → version compare/no-op; install
+  failure with an existing usable version does not block setup.
 - `Get-IntuneWinAppUtil.ps1`: fresh download, up-to-date no-op, forced-update path; verify recorded
   version/sha.
 - `Test-PsadtSetup.ps1` as a live auth check (against a test tenant where available).

@@ -37,8 +37,9 @@ description until a task makes it relevant, then the full body loads on demand.
   cmdlet scan before anything is packaged.
 - **First-run setup** *(in progress)* — a one-time wizard persists machine config (paths, language,
   author) so conventions are configured once, in one place.
-- **Self-managed content-prep tool** *(in progress)* — auto-downloads `IntuneWinAppUtil.exe` and keeps
-  it current against the official Microsoft repo; no manual provisioning.
+- **Self-healing prerequisites** *(in progress)* — auto-installs the PSAppDeployToolkit module from the
+  PowerShell Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against
+  their official sources. No manual provisioning, no roadblocks.
 - **Optional direct Intune upload** *(in progress)* — uploads the `.intunewin` via Microsoft Graph with
   an app registration (client secret stored DPAPI-encrypted). Fully optional: falls back to the manual
   dossier flow in tenants where you cannot register an app (e.g. customer tenants).
@@ -48,7 +49,8 @@ description until a task makes it relevant, then the full body loads on demand.
 ## Requirements
 
 - Windows with PowerShell 5.1+ / PowerShell 7+
-- [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x module installed
+- [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x *(the skill installs/updates this
+  automatically from the PowerShell Gallery if missing)*
 - [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
   *(the skill provisions this automatically)*
 - For optional direct upload: an Entra app registration with the Graph **application** permission
@@ -100,7 +102,7 @@ in-memory at upload time, and never written to `config.json` or any log.
 psadt-deploy/
 ├─ SKILL.md                          the skill itself
 ├─ README.md  ·  LICENSE
-├─ scripts/                          Get/Set-PsadtConfig, Get-IntuneWinAppUtil,
+├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil,
 │                                    Invoke-IntuneWin32Upload, Test-PsadtSetup
 ├─ references/                       PSADTv4-Deployment-Guide.md, app-registration.md
 ├─ docs/superpowers/specs/           design documents
