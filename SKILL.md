@@ -13,9 +13,9 @@ Diese Skill begleitet den kompletten Lebenszyklus eines **PSADT-v4.x-Intune-Win3
 
 **Verbindliche Konventionen (Details im Block unten):**
 - Fragen an den User IMMER per `AskUserQuestion` (Klick-Optionen), nie als Fliesstext
-- Output-`.intunewin` IMMER zentral nach `c:\Temp\PSADTv4\Output\<App>\`
-- Intune-Dossier IMMER `Intune-Dossier.md`, **Deutsch mit echten Umlauten**; Scripts dagegen **Englisch/ASCII**
-- Author IMMER `Patrick Taubert, PHAT Consulting GmbH`; erste Script-Version `0.1`; Changelog im `.NOTES`-Header Pflicht
+- Output-`.intunewin` IMMER zentral nach `paths.outputRoot`/<App>\ (Default `c:\Temp\PSADTv4\Output\`; tatsaechlicher Wert aus der Config via `Get-PsadtConfig`)
+- Intune-Dossier IMMER `Intune-Dossier.html` (komplett HTML), Sprache aus `language.dossier` (**Default Deutsch mit echten Umlauten**); Scripts dagegen **Englisch/ASCII**
+- Author IMMER aus Config zusammengesetzt (`author.person` + `author.company`; Default `Patrick Taubert, PHAT Consulting GmbH`); erste Script-Version `0.1`; Changelog im `.NOTES`-Header Pflicht
 - App-Logo (PNG, transparent, hochaufloesend) besorgen -> `Assets\` + `Output\<App>\`
 - Nur Startmenue-Eintraege, KEINE Desktop-Icons
 - Alle drei Deployment-Types (Install/Uninstall/Repair) von Anfang an mitbauen und per Acid-Test pruefen
@@ -34,7 +34,7 @@ Du fuehrst den User durch den kompletten Lifecycle eines PSADT-v4.x-Intune-Paket
 ## Konventionen (VERBINDLICH)
 
 - **Sprache - getrennt nach Ziel:**
-  - **Intune-Beschreibung / Dossier (`Intune-Dossier.md`): DEUTSCH mit echten Umlauten** (ä, ö, ü, ß) - das ist Fliesstext fuer Endnutzer im Company Portal, dort sind Umlaute korrekt und erwuenscht (KEIN ae/oe/ue ausschreiben).
+  - **Intune-Beschreibung / Dossier (`Intune-Dossier.html`, komplett HTML): Sprache aus `language.dossier`, Default DEUTSCH mit echten Umlauten** (ä, ö, ü, ß) - das ist Endnutzer-Text fuer das Company Portal, dort sind Umlaute korrekt und erwuenscht (KEIN ae/oe/ue ausschreiben). Die Dossier-Sprache ist ein Config-Wert, keine feste Regel.
   - **In den Scripts selbst (Invoke-AppDeployToolkit.ps1, Extensions, Detection): ALLES auf ENGLISCH** - insb. alle Kommentare. Script-Strings ebenfalls Englisch halten, damit keine Umlaute/Non-ASCII ins PS1 geraten (Encoding-Sauberkeit, siehe Pre-Flight). Umlaute gehoeren NUR in die Dossier-Markdown, nie ins Script.
 - **Author IMMER:** `Patrick Taubert, PHAT Consulting GmbH` (Feld `AppScriptAuthor` im `$adtSession`).
 - **Versionierung des Scripts (`AppScriptVersion` im `$adtSession`):**
@@ -48,6 +48,22 @@ Du fuehrst den User durch den kompletten Lifecycle eines PSADT-v4.x-Intune-Paket
   ```
 
 ## Ablauf (fuehre in dieser Reihenfolge durch)
+
+### 0. Setup (Phase 0 — vor Intake ausfuehren)
+
+Bevor irgendetwas anderes passiert: sicherstellen, dass der Skill konfiguriert ist und die Voraussetzungen vorhanden sind.
+
+1. `pwsh scripts/Get-PsadtConfig.ps1` ausfuehren. Wenn `Exists` true und `Missing` leer ist, direkt weiter zu Intake.
+2. Wenn Config fehlt/unvollstaendig ist, den **Setup-Wizard** fahren — nur die fehlenden Werte abfragen, IMMER per `AskUserQuestion` (Klick-Optionen), empfohlene Option zuerst:
+   - **Pfade**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (aktuelle Werte als Defaults anbieten).
+   - **Sprachen**: `language.script` (EN), `language.dossier` (DE als Default — aber Config-Wert, nicht fest).
+   - **Author**: `author.person`, `author.company`.
+   - **Intune-Upload** *(fuer eine zukuenftige Version geplant — in dieser Version NICHT aktiv)*: darauf hinweisen, dass es kommt; KEINE Tenant-/Client-ID/Secret abfragen, `intune.uploadEnabled` NICHT setzen. Das fertige `.intunewin` wird vorerst manuell im Admin Center hochgeladen.
+3. Antworten mit `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` persistieren (in dieser Version ohne `-Secret`).
+4. Voraussetzungen provisionieren (den User nie blockieren):
+   - `pwsh scripts/Get-PsadtModule.ps1` — installiert/aktualisiert PSAppDeployToolkit.
+   - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — laedt/aktualisiert das Content-Prep-Tool nach `tools/`.
+5. Jederzeit per "psadt setup" erneut triggerbar, um einzelne Werte zu aendern.
 
 ### 1. Intake (sofort am Anfang, bevor irgendwas anderes)
 
