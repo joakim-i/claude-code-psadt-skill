@@ -15,7 +15,11 @@ if (-not $local) {
     try {
         Install-Module -Name $name -Scope CurrentUser -Force -AllowClobber
         $local = Get-Module -ListAvailable -Name $name | Sort-Object Version -Descending | Select-Object -First 1
-        return [pscustomobject]@{ Action='Installed'; Installed="$($local.Version)"; Latest="$($latest.Version)" }
+        $installed = if ($local) { "$($local.Version)" } elseif ($latest) { "$($latest.Version)" } else { $null }
+        if (-not $installed) {
+            return [pscustomobject]@{ Action='InstallFailed'; Installed=$null; Latest="$($latest.Version)"; Error='Module not found after install.' }
+        }
+        return [pscustomobject]@{ Action='Installed'; Installed=$installed; Latest="$($latest.Version)" }
     } catch {
         return [pscustomobject]@{ Action='InstallFailed'; Installed=$null; Latest="$($latest.Version)"; Error="$_" }
     }

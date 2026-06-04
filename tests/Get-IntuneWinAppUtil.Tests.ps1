@@ -26,4 +26,19 @@ Describe 'Get-IntuneWinAppUtil' {
         Should -Invoke Invoke-WebRequest -Times 0
         $r.Action | Should -Be 'AlreadyCurrent'
     }
+
+    It 'falls back to a known tag when the release API is unreachable (offline)' {
+        Mock -CommandName Invoke-RestMethod -MockWith { throw 'no network' }
+        Mock -CommandName Invoke-WebRequest -MockWith { Set-Content (Join-Path $script:root 'tools/IntuneWinAppUtil.exe') 'MZ' }
+        $r = & $script:run
+        $r.Action  | Should -Be 'Downloaded'
+        $r.Version | Should -Be 'v1.8.7'
+    }
+
+    It 'returns UpdateFailed when the download fails and no exe exists' {
+        Mock -CommandName Invoke-RestMethod -MockWith { @{ tag_name = 'v1.8.7' } }
+        Mock -CommandName Invoke-WebRequest -MockWith { throw 'download failed' }
+        $r = & $script:run
+        $r.Action | Should -Be 'UpdateFailed'
+    }
 }

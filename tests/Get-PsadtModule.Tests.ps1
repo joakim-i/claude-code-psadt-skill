@@ -15,7 +15,8 @@ Describe 'Get-PsadtModule' {
         Mock -CommandName Find-Module    -MockWith { [pscustomobject]@{ Version = [version]'4.1.0' } }
         $r = & $script:run
         Should -Invoke Install-Module -Times 1
-        $r.Action | Should -Be 'Installed'
+        $r.Action    | Should -Be 'Installed'
+        $r.Installed | Should -Not -BeNullOrEmpty
     }
 
     It 'does not install when a usable version exists' {
