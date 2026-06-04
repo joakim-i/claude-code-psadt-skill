@@ -52,10 +52,8 @@ description until a task makes it relevant, then the full body loads on demand.
 - **Troubleshooting** — decodes Intune error/HRESULT codes (e.g. `0x80070001`), maps symptoms to root
   causes, and triages the right logs (AppWorkload.log, PSADT session log).
 - **Start Menu only** — creates Start Menu entries and removes stray desktop icons; keeps the desktop clean.
-- **Optional direct Intune upload** *(planned — future release)* — will upload the `.intunewin` via
-  Microsoft Graph with an app registration (client secret stored DPAPI-encrypted), and stay fully
-  optional with a fallback to the manual dossier flow. **Not in the current version yet** — today you
-  upload the generated `.intunewin` manually in the Intune Admin Center.
+
+> Planned features (direct Intune upload, GitHub package sync) live in the [Roadmap](#roadmap).
 
 ## Requirements
 
