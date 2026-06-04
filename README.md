@@ -104,7 +104,8 @@ psadt-deploy/
 ├─ README.md  ·  LICENSE
 ├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil
 │                                    (upload scripts arrive with the future upload feature)
-├─ references/                       PSADTv4-Deployment-Guide.md, app-registration.md
+├─ references/                       PSADTv4-Deployment-Guide.md
+│                                    (app-registration.md arrives with the upload feature)
 ├─ docs/superpowers/specs/           design documents
 ├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
 ├─ config.json   (gitignored)        machine-local settings
