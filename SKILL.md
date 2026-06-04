@@ -20,7 +20,7 @@ This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package*
 - Start Menu entries only, NO desktop icons
 - Build all three deployment types (Install/Uninstall/Repair) from the start and verify them via acid test
 
-Per-topic depth in the reference guide `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md` (appendices A-G).
+Per-topic depth in the reference guide `references/PSADTv4-Deployment-Guide.md` (appendices A-G).
 
 ---
 
@@ -29,7 +29,7 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 - **Actively drive the conversation** - do not dump a question list; ask targeted blocker questions, research what can be researched, show the user intermediate results
 - **ALWAYS ask questions via `AskUserQuestion` (click options), never as plain free text** - every decision question to the user goes through the `AskUserQuestion` tool with pre-filled, clickable options. Always put the recommended option first and mark it with the suffix "(recommended)". Offer researched defaults as options. The tool automatically adds an "Other" free-text option - so there is no need to build a manual free-text alternative. Plain text is only allowed for intermediate results / status messages, not for questions.
 - **Do not assume Adobe/Oracle as default** - the app to be packaged always comes from the user; examples from the guide are illustration
-- **Reference**: The complete reference guide is at `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md` - point to specific appendices (A-G) there when depth is needed, do NOT dump the whole guide into the conversation
+- **Reference**: The complete reference guide is at `references/PSADTv4-Deployment-Guide.md` - point to specific appendices (A-G) there when depth is needed, do NOT dump the whole guide into the conversation
 
 ## Conventions (BINDING)
 
@@ -427,7 +427,7 @@ Check logs in this order:
 
 ## Reference lookup
 
-For depth on every topic: `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md`
+For depth on every topic: `references/PSADTv4-Deployment-Guide.md`
 - Phase 0.2: Complete intake question list
 - Phase 0.3: Web research pattern
 - Phase 3.1: Encoding fix details
