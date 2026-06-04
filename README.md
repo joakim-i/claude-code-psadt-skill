@@ -116,7 +116,7 @@ psadt-deploy/
 │                                    (upload scripts arrive with the future upload feature)
 ├─ references/                       PSADTv4-Deployment-Guide.md
 │                                    (app-registration.md arrives with the upload feature)
-├─ docs/superpowers/specs/           design documents
+├─ tests/                            Pester suite for the helper scripts
 ├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
 ├─ config.json   (gitignored)        machine-local settings
 └─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret
@@ -126,9 +126,8 @@ psadt-deploy/
 
 The core build/package/test/dossier workflow is in active use. **Shipped:** first-run setup + config,
 self-healing prerequisites (PSADT module + content-prep tool), and HTML deliverables — verified via the
-Pester suite in `tests/`. See the
-[design spec](docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md) and
-[implementation plan](docs/superpowers/plans/2026-06-04-psadt-skill-setup.md).
+Pester suite in `tests/`. (Design spec and implementation plan are kept in the maintainer's local
+planning folder, not in this repo.)
 
 **Planned for a future release:** the optional direct Intune upload via Microsoft Graph (app
 registration + DPAPI-encrypted secret). Until then, upload the generated `.intunewin` manually in the
