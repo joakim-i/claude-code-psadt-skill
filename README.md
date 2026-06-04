@@ -25,6 +25,8 @@ A skill is a folder with a `SKILL.md` (YAML frontmatter + Markdown instructions)
 with `scripts/`, `references/`, and `tools/`. It loads progressively: the agent sees only the name and
 description until a task makes it relevant, then the full body loads on demand.
 
+<img width="1024" height="254" alt="image" src="https://github.com/user-attachments/assets/7c7931ba-dcae-4476-a648-11115eceb3b5" />
+
 ## Features
 
 - **First-run setup** — a one-time wizard persists machine config (paths, language, author) so
