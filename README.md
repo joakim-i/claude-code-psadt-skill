@@ -40,9 +40,10 @@ description until a task makes it relevant, then the full body loads on demand.
 - **Self-healing prerequisites** *(in progress)* — auto-installs the PSAppDeployToolkit module from the
   PowerShell Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against
   their official sources. No manual provisioning, no roadblocks.
-- **Optional direct Intune upload** *(in progress)* — uploads the `.intunewin` via Microsoft Graph with
-  an app registration (client secret stored DPAPI-encrypted). Fully optional: falls back to the manual
-  dossier flow in tenants where you cannot register an app (e.g. customer tenants).
+- **Optional direct Intune upload** *(planned — future release)* — will upload the `.intunewin` via
+  Microsoft Graph with an app registration (client secret stored DPAPI-encrypted), and stay fully
+  optional with a fallback to the manual dossier flow. **Not in the current version yet** — today you
+  upload the generated `.intunewin` manually in the Intune Admin Center.
 - **Deliverable dossier** — produces the Intune metadata, return-code map, detection, and a ready-to-paste
   app description, plus a transparent high-resolution logo.
 
@@ -53,9 +54,8 @@ description until a task makes it relevant, then the full body loads on demand.
   automatically from the PowerShell Gallery if missing)*
 - [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
   *(the skill provisions this automatically)*
-- For optional direct upload: an Entra app registration with the Graph **application** permission
-  `DeviceManagementApps.ReadWrite.All` (admin consent granted) — see
-  [`references/app-registration.md`](references/app-registration.md)
+- *(Future release only)* For the optional direct upload: an Entra app registration with the Graph
+  **application** permission `DeviceManagementApps.ReadWrite.All` (admin consent granted)
 
 ## Installation
 
@@ -102,8 +102,8 @@ in-memory at upload time, and never written to `config.json` or any log.
 psadt-deploy/
 ├─ SKILL.md                          the skill itself
 ├─ README.md  ·  LICENSE
-├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil,
-│                                    Invoke-IntuneWin32Upload, Test-PsadtSetup
+├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil
+│                                    (upload scripts arrive with the future upload feature)
 ├─ references/                       PSADTv4-Deployment-Guide.md, app-registration.md
 ├─ docs/superpowers/specs/           design documents
 ├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
@@ -113,15 +113,21 @@ psadt-deploy/
 
 ## Status
 
-The core build/package/test/dossier workflow is in active use. The **first-run setup**, **self-managed
-content-prep tool**, **optional Graph upload**, and **HTML deliverables** are being implemented per the
-[design spec](docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md).
+The core build/package/test/dossier workflow is in active use. **Shipping next:** first-run setup +
+config, self-healing prerequisites (PSADT module + content-prep tool), and HTML deliverables — see the
+[design spec](docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md) and
+[implementation plan](docs/superpowers/plans/2026-06-04-psadt-skill-setup.md).
+
+**Planned for a future release:** the optional direct Intune upload via Microsoft Graph (app
+registration + DPAPI-encrypted secret). Until then, upload the generated `.intunewin` manually in the
+Intune Admin Center.
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep `SKILL.md`, references, and docs in **English**; the only
-intentionally German output is the generated Intune dossier and Company-Portal app description (end-user
-text).
+Issues and pull requests are welcome. Keep `SKILL.md`, references, and docs in **English**. The only
+non-English content is the generated end-user output (Intune dossier and Company-Portal app
+description), whose language follows the `language.dossier` config value — **default German**, but
+configurable per machine.
 
 ## License
 

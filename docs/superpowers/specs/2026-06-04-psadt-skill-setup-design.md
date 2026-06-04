@@ -2,13 +2,16 @@
 
 - **Date:** 2026-06-04
 - **Author:** Patrick Taubert, PHAT Consulting GmbH (with Claude Code)
-- **Status:** Design approved, awaiting user review of this spec
+- **Status:** Design approved. **Delivery scope:** the optional Intune direct upload (§5.4–5.7, §6.3) is
+  **deferred to a future release**; the first version ships setup + config, self-healing prerequisites,
+  HTML deliverables, and the English translation. See the implementation plan for the exact task split.
 - **Applies to:** `~/.claude/skills/psadt-deploy/` (repo: `pt1987/claude-code-psadt-skill`)
 
 > Language note: Everything in this repository is written in **English** (README, `SKILL.md`,
 > reference guide, this spec). The **only deliberate exception is generated deliverable content**:
-> the Intune dossier and the Company-Portal app description are produced in **German with real
-> umlauts** for the end user. Deployment scripts stay English/ASCII (encoding hygiene).
+> the Intune dossier and the Company-Portal app description are produced in the configured dossier
+> language (`language.dossier`, **default German** with real umlauts) for the end user — this is a
+> config value, not a hard rule, so a user may set it to EN. Deployment scripts stay English/ASCII.
 
 ## 1. Problem / Motivation
 

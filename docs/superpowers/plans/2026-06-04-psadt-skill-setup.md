@@ -10,6 +10,14 @@
 
 **Repo / working dir:** `c:\Temp\claude.code\claude-code-psadt-skill` (== installed skill folder layout). Spec: `docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md`.
 
+> **SCOPE FOR THIS VERSION:** The optional **Intune direct upload is deferred to a future release.**
+> Tasks **5, 6, 7** below (Test-PsadtSetup, Invoke-IntuneWin32Upload + content helper,
+> app-registration.md) are marked **DEFERRED — do NOT implement now.** This version ships: setup +
+> config, self-healing prerequisites, HTML deliverables, and the English translation. The setup wizard
+> still offers an Intune "Later" choice but writes nothing live and never collects a secret.
+> **Execute Tasks: 0, 1, 2, 3, 4, 8, 9, 10, 11, 12** (with the upload-specific steps inside 8/9/11/12
+> skipped as noted in each).
+
 ---
 
 ## Conventions for every task
@@ -500,7 +508,10 @@ git commit -m "feat: add Get-IntuneWinAppUtil with version check and offline fal
 
 ---
 
-## Task 5: `Test-PsadtSetup.ps1` — Graph auth smoke test
+## Task 5: `Test-PsadtSetup.ps1` — Graph auth smoke test  — ⛔ DEFERRED (future upload release)
+
+> Skip in this version. Kept here as the spec of record for the upload feature. Implement when the
+> Intune direct upload ships.
 
 **Files:**
 - Create: `scripts/Test-PsadtSetup.ps1`
@@ -591,7 +602,9 @@ git commit -m "feat: add Test-PsadtSetup Graph auth smoke test"
 
 ---
 
-## Task 6: `Invoke-IntuneWin32Upload.ps1` — Graph upload (unit-mocked) + manual integration
+## Task 6: `Invoke-IntuneWin32Upload.ps1` — Graph upload (unit-mocked) + manual integration  — ⛔ DEFERRED (future upload release)
+
+> Skip in this version. Kept as the spec of record for the upload feature.
 
 **Files:**
 - Create: `scripts/Invoke-IntuneWin32Upload.ps1`
@@ -782,7 +795,9 @@ git commit -m "feat: add Graph win32LobApp upload (app create mocked-tested + co
 
 ---
 
-## Task 7: `references/app-registration.md`
+## Task 7: `references/app-registration.md`  — ⛔ DEFERRED (future upload release)
+
+> Skip in this version (the doc only matters once upload ships). Kept as the spec of record.
 
 **Files:**
 - Create: `references/app-registration.md`
@@ -844,33 +859,21 @@ Before anything else, ensure the skill is configured and prerequisites are prese
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer current defaults).
    - **Languages**: `language.script` (EN), `language.dossier` (DE).
    - **Author**: `author.person`, `author.company`.
-   - **Intune upload**: Yes / No / Later. If Yes: `intune.tenantId`, `intune.clientId`, `intune.defaultAssignment`.
-3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }`.
-4. **Secret (only if upload = Yes): NEVER ask for it in chat.** Print this terminal one-liner for the user
-   to run themselves (it reads the secret hidden and DPAPI-encrypts it):
-   ```powershell
-   $s = Read-Host 'Client secret' -AsSecureString; pwsh '<skill>/scripts/Set-PsadtConfig.ps1' -Secret $s
-   ```
-5. Provision prerequisites (never block the user):
+   - **Intune upload** *(planned for a future release — not active in this version)*: mention it is
+     coming, do not collect tenant/client/secret, do not set `intune.uploadEnabled`. The generated
+     `.intunewin` is uploaded manually in the Admin Center for now.
+3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` (no `-Secret` in this version).
+4. Provision prerequisites (never block the user):
    - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
    - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
-6. If upload = Yes, run `pwsh scripts/Test-PsadtSetup.ps1`. Only set `intune.uploadEnabled = $true`
-   after `Ok = $true`. On failure, show `Reason` and point to `references/app-registration.md`.
-7. Re-trigger anytime the user says "psadt setup" to change individual values.
+5. Re-trigger anytime the user says "psadt setup" to change individual values.
 ```
 
-- [ ] **Step 2: Add the DPAPI info block**
+- [ ] **Step 2: DPAPI info block — ⛔ DEFERRED (ships with the upload feature)**
 
-Append this subsection at the end of the `## Konventionen (VERBINDLICH)` block:
-```markdown
-### How the client secret is stored (DPAPI)
-
-If a user asks how their secret is handled: encryption is automatic in `Set-PsadtConfig.ps1` using
-Windows **DPAPI** (`ConvertFrom-SecureString`, scope CurrentUser). The user enters the secret in their
-own terminal via `Read-Host -AsSecureString` — it never enters the chat transcript. The blob in
-`secret.dpapi` is bound to user + machine (worthless if copied elsewhere), decrypted only in-memory at
-upload time, and never written to `config.json` or any log. On secret rotation, re-run setup.
-```
+Skip in this version: the secret is only collected once direct upload ships, so the user-facing DPAPI
+explainer goes in with that release. (The `Set-PsadtConfig.ps1` `-Secret`/DPAPI capability from Task 2
+stays in place and tested, just unused for now.)
 
 - [ ] **Step 3: Verify SKILL.md still parses as a skill (frontmatter intact)**
 
@@ -885,7 +888,7 @@ Expected: `OK`.
 
 ```bash
 git add SKILL.md
-git commit -m "feat: add Phase 0 setup wizard and DPAPI secret docs to SKILL.md"
+git commit -m "feat: add Phase 0 setup wizard to SKILL.md (upload deferred)"
 ```
 
 ---
@@ -905,24 +908,12 @@ Make these edits in `SKILL.md` (search → replace the surrounding guidance):
 - Where author is stated `Patrick Taubert, PHAT Consulting GmbH`, add: "(default; composed from
   `author.person` + `author.company` in config)".
 
-- [ ] **Step 2: Add the optional Intune upload phase**
+- [ ] **Step 2: Intune upload phase — ⛔ DEFERRED (future upload release)**
 
-Insert a new section after "### 6. Packen mit IntuneWinAppUtil" titled "### 6.5 Intune upload (optional)":
-```markdown
-### 6.5 Intune upload (optional)
-
-Only if `intune.uploadEnabled` is true (read via `Get-PsadtConfig`). Otherwise keep the existing manual
-flow (hand the user the `.intunewin` + dossier to upload in the Admin Center) — this is the explicit
-fallback for tenants without app-registration rights.
-
-Even when enabled, offer a per-run opt-out via `AskUserQuestion` (e.g. customer tenant). To upload:
-```powershell
-pwsh scripts/Invoke-IntuneWin32Upload.ps1 -IntuneWinPath '<out>\<App>.intunewin' `
-    -DisplayName '<App>' -Version '<ver>' -InstallCommand 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent' `
-    -UninstallCommand 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent' -LogoPath '<out>\<App>-Logo.png'
-```
-Show the returned `AppId` + `PortalUrl` to the user.
-```
+Skip in this version. Instead, ensure the existing manual-upload guidance in "### 7. Intune-Dossier"
+explicitly states the user uploads the generated `.intunewin` by hand in the Intune Admin Center, and
+add a one-line note: "Direct Graph upload is planned for a future skill version." The live `### 6.5`
+upload phase (with `Invoke-IntuneWin32Upload.ps1`) ships with Task 6.
 
 - [ ] **Step 3: Switch the deliverable convention from Markdown to HTML**
 
@@ -960,8 +951,10 @@ git commit -m "feat: config-driven values, optional upload phase, HTML dossier c
 > Translation rules (apply to BOTH files): translate all prose and comments to natural technical English.
 > PRESERVE: the YAML frontmatter `name`/`description` keys (translate the description text to English),
 > all PowerShell code blocks and cmdlet names verbatim, file paths, the `0.1` start-version and changelog
-> convention. Keep exactly ONE deliberate German element: any **example** of dossier/Company-Portal
-> output stays German with real umlauts (it is end-user text) — label such blocks "(German — end-user output)".
+> convention. Keep exactly ONE deliberate non-English element: any **example** of dossier/Company-Portal
+> output is rendered in the configured dossier language (`language.dossier`, **default German** with real
+> umlauts — it is end-user text). Label such blocks "(end-user output — language.dossier, default German)".
+> Note in the prose that the dossier language is config-driven (a user may set `language.dossier` to EN).
 
 - [ ] **Step 1: Translate `SKILL.md` to English**
 
@@ -1020,14 +1013,10 @@ Invoke-Pester -Path "$PSScriptRoot" -Output Detailed -CI
 Run: `pwsh tests/Run-All.ps1`
 Expected: all tests PASS, exit code 0.
 
-- [ ] **Step 3: Manual live integration (requires a real test tenant + app registration)**
+- [ ] **Step 3: Manual live integration — ⛔ DEFERRED (ships with the upload feature)**
 
-Document the run in the PR description; do NOT automate (needs real credentials):
-1. `psadt setup` → enter test tenant id/client id, secret via the printed one-liner.
-2. `pwsh scripts/Test-PsadtSetup.ps1` → expect `Ok = $true`.
-3. Build a tiny test `.intunewin`, then run `Invoke-IntuneWin32Upload.ps1` WITHOUT `-SkipContentUpload`.
-4. Confirm in Intune the app exists, content version shows `commitFileSuccess`, logo set.
-5. Delete the test app from the tenant afterwards.
+Skip in this version (no upload to integration-test). This step returns with Tasks 5/6: setup → token
+smoke test → real `.intunewin` upload → verify in Intune → delete test app.
 
 - [ ] **Step 4: Commit**
 
@@ -1045,9 +1034,9 @@ git commit -m "test: add full-suite runner and live integration checklist"
 
 - [ ] **Step 1: Flip the Status section**
 
-In `README.md`, change the "Status" section: move first-run setup, self-healing prerequisites, optional
-Graph upload, and HTML deliverables from "(in progress)" to shipped; keep a short "Verified via Pester +
-one live tenant run" note.
+In `README.md`, change the "Status" section: mark first-run setup, self-healing prerequisites, and HTML
+deliverables as **shipped** ("Verified via Pester"). **Leave the optional Intune upload under "Planned
+for a future release"** — it is intentionally not built in this version.
 
 - [ ] **Step 2: Install into the live skill folder**
 
