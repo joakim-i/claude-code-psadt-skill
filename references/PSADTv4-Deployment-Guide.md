@@ -765,54 +765,54 @@ Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 ## Appendix E: Final deploy checklist
 
 ```
-Phase 0 - Recherche + Intake
-[ ] 0.1  PSADT-Version lokal == Latest (oder Update)
-[ ] 0.2  Intake-Formular komplett (App, Installer, Environment, Sec)
-[ ] 0.3  Silent-Install-Switches + Uninstall-Switches dokumentiert
+Phase 0 - Research + Intake
+[ ] 0.1  PSADT version local == Latest (or update)
+[ ] 0.2  Intake form complete (App, Installer, Environment, Sec)
+[ ] 0.3  Silent install switches + uninstall switches documented
 
 Phase 1 - Scaffold
-[ ] 1.1  New-ADTTemplate -Destination ... -Name ... ausgefuehrt
-[ ] 1.2  Folder-Layout komplett
-[ ] 1.3  Modul-Version im Scaffold gepinnt
+[ ] 1.1  New-ADTTemplate -Destination ... -Name ... executed
+[ ] 1.2  Folder layout complete
+[ ] 1.3  Module version pinned in scaffold
 
-Phase 2 - Script-Customizing
+Phase 2 - Script customizing
 [ ] 2.1  Installer in Files\
-[ ] 2.2  $adtSession mit allen Metadaten
-[ ] 2.3  Install/Uninstall/Repair-Hooks gefuellt
-[ ] 2.4  Custom-Helpers in PSAppDeployToolkit.Extensions, nicht im Main
+[ ] 2.2  $adtSession with all metadata
+[ ] 2.3  Install/Uninstall/Repair hooks filled in
+[ ] 2.4  Custom helpers in PSAppDeployToolkit.Extensions, not in the main script
 
 Phase 3 - Pre-Flight
-[ ] 3.1  Encoding: HasBOM=True ODER NonAscii=0
+[ ] 3.1  Encoding: HasBOM=True OR NonAscii=0
 [ ] 3.2  ParseFile PARSE_OK
-[ ] 3.3  Launcher-Simulation gruen
-[ ] 3.4  Param-Block zu v4-Template synchron
-[ ] 3.5  Keine v3-Cmdlet-Reste
-[ ] 3.6  Keine Top-Level-Statements die werfen koennen
+[ ] 3.3  Launcher simulation green
+[ ] 3.4  Param block in sync with v4 template
+[ ] 3.5  No v3 cmdlet remnants
+[ ] 3.6  No top-level statements that can throw
 
-Phase 4 - Bauen
+Phase 4 - Build
 [ ] 4.1  IntuneWinAppUtil latest
-[ ] 4.2  -c / -s / -o korrekt, -o NICHT im -c
-[ ] 4.3  Inspektion: Detection.xml hat SetupFile=Invoke-AppDeployToolkit.exe
+[ ] 4.2  -c / -s / -o correct, -o NOT inside -c
+[ ] 4.3  Inspection: Detection.xml has SetupFile=Invoke-AppDeployToolkit.exe
 
-Phase 5 - Intune-Config
+Phase 5 - Intune config
 [ ] 5.1  App Info + Logo
-[ ] 5.2  Install/Uninstall-Command + Install Behavior=System
-[ ] 5.3  Return Codes komplett (inkl. 60001+60008=Failed)
+[ ] 5.2  Install/Uninstall command + Install Behavior=System
+[ ] 5.3  Return codes complete (incl. 60001+60008=Failed)
 [ ] 5.4  Requirements (OS, Arch, Disk, Memory)
-[ ] 5.5  Detection-Methode EINDEUTIG
-[ ] 5.6  Install time realitaetsnah
-[ ] 5.7  Assignments + Filter + Delivery-Opt
+[ ] 5.5  Detection method UNAMBIGUOUS
+[ ] 5.6  Install time realistic
+[ ] 5.7  Assignments + Filter + Delivery Opt
 
 Phase 6 - Test
-[ ] 6.1  Direct-Invoke auf DEV
-[ ] 6.2  Launcher-Invoke auf DEV
-[ ] 6.3  Psexec -s auf DEV
-[ ] 6.4  Testgruppen-Deploy -> PSADT-Log + Close-ADTSession Exit 0
+[ ] 6.1  Direct invoke on DEV
+[ ] 6.2  Launcher invoke on DEV
+[ ] 6.3  Psexec -s on DEV
+[ ] 6.4  Test-group deploy -> PSADT log + Close-ADTSession Exit 0
 
 Phase 7 - Rollout
 [ ] 7.1  Pilot (24-48h)
 [ ] 7.2  Production staged
-[ ] 7.3  GitHub-Release-Watch abonniert
+[ ] 7.3  GitHub release watch subscribed
 ```
 
 Only when ALL lines are green: production rollout.
@@ -821,14 +821,14 @@ Only when ALL lines are green: production rollout.
 
 ## Appendix F: Intune deployment dossier (upload template, to be filled in per app)
 
-Place this template as a Markdown file per app next to the `.intunewin` (e.g. `<AppName>-IntuneDossier.md`). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
+Place this template as a full HTML file per app next to the `.intunewin` (`Intune-Dossier.html`). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
 
 ### F.1 App information
 
 | Intune field | Value | Notes |
 |---|---|---|
 | **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
-| **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
+| **Description** | see F.2 (HTML block) | the first ~200 characters are the short preview in the CP |
 | **Publisher** | `<Hersteller>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
 | **App version** | `<Major.Minor.Build.Rev>` | exact file version |
 | **Category** | e.g. Business, Development, Productivity, Communication | for CP navigation |
@@ -841,42 +841,41 @@ Place this template as a Markdown file per app next to the `.intunewin` (e.g. `<
 | **Logo** | `<pkg>\Assets\AppIcon.png` | 256x256 PNG transparent |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
-### F.2 Description Markdown template (Company Portal)
+### F.2 Description HTML template (Company Portal)
 
-Intune renders Markdown in the Company Portal. Copy the block 1:1, replace `<...>`.
+The Intune description field has an HTML editor and renders HTML in the Company Portal. Copy the block 1:1, replace `<...>`.
 
 (end-user output — language.dossier, default German)
 
-```markdown
-**<AppName>** ist <Ein-Satz-Zweck>.
+```html
+<p><strong>&lt;AppName&gt;</strong> ist &lt;Ein-Satz-Zweck&gt;.</p>
 
-<Zwei-bis-drei-Saetze-Nutzenbeschreibung fuer Endbenutzer. Was bekommen sie, wofuer brauchen sie das.>
+<p>&lt;Zwei-bis-drei-Sätze-Nutzenbeschreibung für Endbenutzer. Was bekommen sie, wofür brauchen sie das.&gt;</p>
 
-### Was du bekommst
+<p><strong>Was du bekommst</strong></p>
+<ul>
+  <li>&lt;Feature 1&gt;</li>
+  <li>&lt;Feature 2&gt;</li>
+  <li>&lt;Feature 3&gt;</li>
+  <li>&lt;ggf. Config / Branding&gt;</li>
+</ul>
 
-- <Feature 1>
-- <Feature 2>
-- <Feature 3>
-- <ggf. Config / Branding>
+<p><strong>Was du brauchst</strong></p>
+<ul>
+  <li>Windows 11 (oder Windows 10 22H2+)</li>
+  <li>~&lt;X&gt; GB freier Speicherplatz auf <code>C:</code></li>
+  <li>Ca. <strong>&lt;N&gt;-&lt;M&gt; Minuten</strong> Installationsdauer</li>
+  <li><em>&lt;ggf. Kein Neustart erforderlich / Neustart empfohlen&gt;</em></li>
+</ul>
 
-### Was du brauchst
+<p><strong>Nach der Installation</strong></p>
+<p>&lt;Was findet der User vor? Startmenü-Eintrag, Desktop-Shortcut, Config-Datei, Zugangsdaten?&gt;</p>
 
-- Windows 11 (oder Windows 10 22H2+)
-- ~<X> GB freier Speicherplatz auf `C:`
-- Ca. **<N>-<M> Minuten** Installationsdauer
-- *<ggf. Kein Neustart erforderlich / Neustart empfohlen>*
+<p><strong>Deinstallation</strong></p>
+<p>&lt;Was passiert bei Deinstall? Bleiben User-Daten, werden sie entfernt, was soll der User vorher sichern?&gt;</p>
 
-### Nach der Installation
-
-<Was findet der User vor? Startmenu-Eintrag, Desktop-Shortcut, Config-Datei, Zugangsdaten?>
-
-### Deinstallation
-
-<Was passiert bei Deinstall? Bleiben User-Daten, werden sie entfernt, was soll der User vorher sichern?>
-
-### Support
-
-Bei Problemen bitte ein Ticket beim **IT-Service-Desk** eroeffnen und - wenn moeglich - die Logdateien unter `C:\Windows\Logs\Software\` anhaengen.
+<p><strong>Support</strong></p>
+<p>Bei Problemen bitte ein Ticket beim <strong>IT-Service-Desk</strong> eröffnen und - wenn möglich - die Logdateien unter <code>C:\Windows\Logs\Software\</code> anhängen. Weitere Hinweise im <a href="&lt;support-portal-url&gt;">Support-Portal</a>.</p>
 ```
 
 Check: the first paragraph must also be readable on its own (200-character short preview).
