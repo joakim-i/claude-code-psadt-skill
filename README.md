@@ -95,32 +95,27 @@ On the first run (or when you say *"psadt setup"*), the skill walks a short wiza
 | `paths.intuneWinAppUtil` | Content-prep tool location (skill-managed by default) |
 | `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) |
 | `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
-| `intune.*` | Optional direct-upload settings (tenant id, client id, default assignment) |
 
-`config.json`, `secret.dpapi`, and `tools/` are **machine-local** and are never committed.
-
-### Secret handling (DPAPI)
-
-If you enable direct upload, the client secret is **never typed into the chat**. The skill prints a
-terminal one-liner that reads the secret via `Read-Host -AsSecureString` and encrypts it with Windows
-**DPAPI** (scope `CurrentUser`) into `secret.dpapi`. It is bound to your user + machine, decrypted only
-in-memory at upload time, and never written to `config.json` or any log.
+`config.json` and `tools/` are **machine-local** and are never committed.
 
 ## Project structure
+
+Current (what ships today):
 
 ```
 psadt-deploy/
 ├─ SKILL.md                          the skill itself
 ├─ README.md  ·  LICENSE
 ├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil
-│                                    (upload scripts arrive with the future upload feature)
 ├─ references/                       PSADTv4-Deployment-Guide.md
-│                                    (app-registration.md arrives with the upload feature)
 ├─ tests/                            Pester suite for the helper scripts
 ├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
-├─ config.json   (gitignored)        machine-local settings
-└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret
+└─ config.json   (gitignored)        machine-local settings
 ```
+
+Arrives later with the [direct-upload feature](#roadmap): `scripts/Invoke-IntuneWin32Upload.ps1`,
+`scripts/Test-PsadtSetup.ps1`, `references/app-registration.md`, the `intune.*` config block, and
+`secret.dpapi` (the DPAPI-encrypted client secret).
 
 ## Status
 
@@ -134,10 +129,13 @@ planning folder, not in this repo.)
 Planned features, in rough priority order. These are designed/specced and waiting to be built:
 
 - **Optional direct Intune upload (Microsoft Graph)** — upload the `.intunewin` straight to Intune via
-  an Entra app registration (`DeviceManagementApps.ReadWrite.All`), with the client secret stored
-  DPAPI-encrypted. Stays optional, with a fallback to the manual dossier flow for tenants where you
-  cannot register an app. *Until then: upload the generated `.intunewin` manually in the Intune Admin
-  Center.*
+  an Entra app registration (`DeviceManagementApps.ReadWrite.All`). Stays optional, with a fallback to
+  the manual dossier flow for tenants where you cannot register an app. *Until then: upload the generated
+  `.intunewin` manually in the Intune Admin Center.*
+  - *Secret handling (planned):* the client secret will be entered via a terminal one-liner
+    (`Read-Host -AsSecureString`), never typed into the chat, and stored **DPAPI-encrypted** (scope
+    `CurrentUser`) in `secret.dpapi` — bound to your user + machine, decrypted only in-memory at upload
+    time, never written to `config.json` or any log.
 - **Sync finished packages to a GitHub repo** — a setup option (`output.target` = `local` / `git` /
   `both`) to push the per-app artifacts (`.intunewin`, dossier, detection, logo) to a Git repo instead
   of (or in addition to) a local folder — versioned and shareable, optionally not kept locally. Will use
