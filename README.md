@@ -129,9 +129,21 @@ self-healing prerequisites (PSADT module + content-prep tool), and HTML delivera
 Pester suite in `tests/`. (Design spec and implementation plan are kept in the maintainer's local
 planning folder, not in this repo.)
 
-**Planned for a future release:** the optional direct Intune upload via Microsoft Graph (app
-registration + DPAPI-encrypted secret). Until then, upload the generated `.intunewin` manually in the
-Intune Admin Center.
+## Roadmap
+
+Planned features, in rough priority order. These are designed/specced and waiting to be built:
+
+- **Optional direct Intune upload (Microsoft Graph)** — upload the `.intunewin` straight to Intune via
+  an Entra app registration (`DeviceManagementApps.ReadWrite.All`), with the client secret stored
+  DPAPI-encrypted. Stays optional, with a fallback to the manual dossier flow for tenants where you
+  cannot register an app. *Until then: upload the generated `.intunewin` manually in the Intune Admin
+  Center.*
+- **Sync finished packages to a GitHub repo** — a setup option (`output.target` = `local` / `git` /
+  `both`) to push the per-app artifacts (`.intunewin`, dossier, detection, logo) to a Git repo instead
+  of (or in addition to) a local folder — versioned and shareable, optionally not kept locally. Will use
+  **Git LFS** for large `.intunewin` files (GitHub's 100 MB per-file limit).
+
+Have a request? Open an issue.
 
 ## Contributing
 
