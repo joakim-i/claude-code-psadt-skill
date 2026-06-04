@@ -1,73 +1,83 @@
-# Design: Erst-Setup & optionaler Intune-Upload fuer den psadt-deploy Skill
+# Design: First-Run Setup & Optional Intune Upload for the psadt-deploy Skill
 
-- **Datum:** 2026-06-04
-- **Autor:** Patrick Taubert, PHAT Consulting GmbH (mit Claude Code)
-- **Status:** Design freigegeben, wartet auf User-Review der Spec
-- **Betrifft:** `~/.claude/skills/psadt-deploy/`
+- **Date:** 2026-06-04
+- **Author:** Patrick Taubert, PHAT Consulting GmbH (with Claude Code)
+- **Status:** Design approved, awaiting user review of this spec
+- **Applies to:** `~/.claude/skills/psadt-deploy/` (repo: `pt1987/claude-code-psadt-skill`)
 
-> Hinweis zur Sprache dieses Dokuments: Diese Spec und die `SKILL.md` sind interne
-> Skill-/Prozess-Artefakte und bleiben in Markdown. Die neue HTML-Konvention (siehe unten)
-> gilt fuer die **Deliverables** (Intune-Dossier, Beschreibungs-Block), NICHT fuer Skill-
-> oder Prozess-Dokumente.
+> Language note: Everything in this repository is written in **English** (README, `SKILL.md`,
+> reference guide, this spec). The **only deliberate exception is generated deliverable content**:
+> the Intune dossier and the Company-Portal app description are produced in **German with real
+> umlauts** for the end user. Deployment scripts stay English/ASCII (encoding hygiene).
 
 ## 1. Problem / Motivation
 
-Der `psadt-deploy` Skill verdrahtet aktuell zentrale Konventionen direkt im Prosa-Text der
-`SKILL.md`:
+The `psadt-deploy` skill currently hard-codes core conventions directly in the prose of `SKILL.md`:
 
-- Output-Pfad `c:\Temp\PSADTv4\Output\`
-- IntuneWinAppUtil unter `C:\Tools\IntuneWinAppUtil.exe`
-- Sprach-Split (Dossier DE / Scripts EN)
+- Output path `c:\Temp\PSADTv4\Output\`
+- IntuneWinAppUtil at `C:\Tools\IntuneWinAppUtil.exe`
+- Language split (dossier DE / scripts EN)
 - Author `Patrick Taubert, PHAT Consulting GmbH`
 
-Diese Werte muessen pro Maschine/Umgebung stimmen, sind aber nirgends zentral konfigurierbar.
-Ausserdem fehlt dem Skill eine **Direkt-Upload-Faehigkeit nach Intune** komplett — inkl. der
-dafuer noetigen Entra-App-Registrierung.
+These values must match the local machine/environment but are not configurable in one place. The
+skill is also missing a **direct upload capability to Intune** entirely — including the required
+Entra app registration — and it expects the user to provision the content-prep tool by hand.
 
-**Ziel:** Ein einmaliges **Setup (Phase 0)**, das diese Werte in eine persistente Config zieht,
-plus eine **optionale** Intune-Direkt-Upload-Faehigkeit ueber Microsoft Graph.
+**Goal:** A one-time **Setup (Phase 0)** that lifts these values into a persistent config, a
+skill-managed **content-prep tool** (auto-download + version check), and an **optional** Intune
+direct-upload capability via Microsoft Graph.
 
-## 2. Entscheidungen (vom User bestaetigt)
+## 2. Decisions (confirmed by the user)
 
-| Thema | Entscheidung |
+| Topic | Decision |
 |---|---|
-| Config-Ablage | Im Skill-Ordner: `~/.claude/skills/psadt-deploy/config.json` |
-| Secret-Ablage | DPAPI-verschluesselt (CurrentUser) in `secret.dpapi`, getrennt von der Config |
-| Setup-Trigger | Beides: Auto bei fehlender/unvollstaendiger Config UND explizit re-triggerbar ("psadt setup") |
-| Upload-Modus | Skill laedt selbst hoch (Graph), aber **optional** und pro Lauf ablehnbar |
-| Auth-Methode | Client-Secret (Tenant-ID + Client-ID in config.json, Secret per DPAPI) |
-| Architektur | Hybrid: Helfer-Skripte fuer Sicherheits-/Komplexitaetsteile, Wizard/Customizing bleibt modellgesteuert |
-| Ausgabeformat | Neue Konvention: Deliverables in **HTML** statt Markdown (Dossier komplett). `SKILL.md` bleibt Markdown |
-| Author | Strukturiert in der Config (`person` + `company`), im Setup getrennt abgefragt |
+| Config location | In the skill folder: `~/.claude/skills/psadt-deploy/config.json` |
+| Secret storage | DPAPI-encrypted (CurrentUser) in `secret.dpapi`, separate from the config |
+| Setup trigger | Both: auto on missing/incomplete config AND explicitly re-triggerable ("psadt setup") |
+| Upload mode | Skill uploads itself (Graph), but **optional** and declinable per run |
+| Auth method | Client secret (tenant id + client id in config.json, secret via DPAPI) |
+| Architecture | Hybrid: helper scripts for security/complex parts, wizard/customizing stays model-driven |
+| Content-prep tool | Skill-managed: auto-download into `tools/`, version-checked against the official MS repo |
+| Deliverable format | New convention: deliverables in **HTML** instead of Markdown (full dossier) |
+| Repo language | Everything in the repo is **English**; only generated dossier/description output is German |
+| License | MIT (`LICENSE`, author Patrick Taubert / PHAT Consulting GmbH) |
+| Author field | Structured in config (`person` + `company`), asked separately in setup |
 
-**Wichtige Randbedingung:** Der Upload bleibt **vollstaendig optional**. Nicht in jedem Tenant
-besteht die Moeglichkeit, eine App zu registrieren (z.B. Kunden-Tenant). `uploadEnabled: false`
-bzw. ein fehlender `intune`-Block ist ein vollwertiger Zustand — dann faellt der Skill auf den
-bisherigen manuellen Flow (`.intunewin` + Dossier, Upload von Hand im Admin Center) zurueck.
+**Key constraint:** The upload stays **fully optional**. Not every tenant allows registering an app
+(e.g. a customer tenant). `uploadEnabled: false` (or a missing `intune` block) is a first-class
+state — the skill then falls back to the existing manual flow (`.intunewin` + dossier, uploaded by
+hand in the Admin Center).
 
-**Kein Plugin:** Es bleibt ein Skill mit mitgelieferten Hilfsdateien (`scripts/`, `references/`),
-keine Umwandlung in ein Claude-Code-Plugin.
+**Not a plugin:** It stays a skill with bundled helper files (`scripts/`, `references/`, `tools/`),
+no conversion into a Claude Code plugin. Packaging as a plugin later would be a separate step.
 
-## 3. Dateistruktur
+## 3. File structure
 
 ```
-~/.claude/skills/psadt-deploy/
-├─ SKILL.md                          (Markdown; bekommt Phase 0 + Upload-Phase + HTML-Umstellung)
-├─ config.json                       (nicht eingecheckt; entsteht beim Setup)
-├─ secret.dpapi                      (DPAPI-Blob, nur das Secret; nie Klartext)
+~/.claude/skills/psadt-deploy/   (== repo root)
+├─ SKILL.md                          (Markdown; gains Phase 0 + upload phase + HTML switch; English)
+├─ README.md                         (English, modeled on awesome-claude-skills single-skill style)
+├─ LICENSE                           (MIT)
+├─ .gitignore                        (excludes config.json, secret.dpapi, tools/)
+├─ config.json                       (NOT committed; created by setup)
+├─ secret.dpapi                      (NOT committed; DPAPI blob, secret only)
+├─ tools/
+│  └─ IntuneWinAppUtil.exe           (NOT committed; auto-downloaded + version-checked)
 ├─ references/
-│  └─ app-registration.md            (Anleitung Entra-App-Registrierung)
+│  ├─ PSADTv4-Deployment-Guide.md    (the reference guide, appendices A–G; English)
+│  └─ app-registration.md            (Entra app-registration walkthrough; English)
 └─ scripts/
-   ├─ Get-PsadtConfig.ps1            (liest config.json -> Objekt; meldet fehlende Felder)
-   ├─ Set-PsadtConfig.ps1           (schreibt/aktualisiert config.json; DPAPI-verschluesselt Secret)
-   ├─ Invoke-IntuneWin32Upload.ps1  (Graph-Upload: Token -> App -> Content -> Blob -> Commit -> Assign)
-   └─ Test-PsadtSetup.ps1           (Auth-Smoke-Test: Token holen + 1 Graph-GET)
+   ├─ Get-PsadtConfig.ps1            (reads config.json -> object; reports missing fields)
+   ├─ Set-PsadtConfig.ps1           (writes/updates config.json; DPAPI-encrypts secret)
+   ├─ Get-IntuneWinAppUtil.ps1      (ensures tool present + current vs official MS repo)
+   ├─ Invoke-IntuneWin32Upload.ps1  (Graph upload: token -> app -> content -> blob -> commit -> assign)
+   └─ Test-PsadtSetup.ps1           (auth smoke test: acquire token + 1 Graph GET)
 ```
 
-`config.json` und `secret.dpapi` sind maschinen-/benutzerlokaler Laufzeit-Zustand und werden
-nicht mit dem Skill verteilt. Das Setup behandelt sie als "erzeuge-falls-fehlt".
+`config.json`, `secret.dpapi` and `tools/` are machine/user-local runtime state and are NOT
+distributed with the skill. Setup treats them as "create-if-missing".
 
-## 4. Config-Schema (`config.json`)
+## 4. Config schema (`config.json`)
 
 ```json
 {
@@ -75,7 +85,11 @@ nicht mit dem Skill verteilt. Das Setup behandelt sie als "erzeuge-falls-fehlt".
   "paths": {
     "packageRoot":      "c:\\Temp\\PSADTv4",
     "outputRoot":       "c:\\Temp\\PSADTv4\\Output",
-    "intuneWinAppUtil": "C:\\Tools\\IntuneWinAppUtil.exe"
+    "intuneWinAppUtil": "<skillDir>\\tools\\IntuneWinAppUtil.exe"
+  },
+  "tooling": {
+    "intuneWinAppUtilVersion": "v1.8.7",
+    "intuneWinAppUtilSha":     "<git-blob-sha>"
   },
   "language": { "script": "EN", "dossier": "DE" },
   "author":   { "person": "Patrick Taubert", "company": "PHAT Consulting GmbH" },
@@ -89,130 +103,149 @@ nicht mit dem Skill verteilt. Das Setup behandelt sie als "erzeuge-falls-fehlt".
 }
 ```
 
-**Feld-Regeln:**
+**Field rules:**
 
-- Die vier vom User geforderten Werte sind abgedeckt: Ablage (`paths.packageRoot`/`outputRoot`),
-  Sprache (`language.script`/`dossier`), Tool-Pfad (`paths.intuneWinAppUtil`), Upload + App-Reg
-  (`intune.*`). Plus `author` (vorher hartverdrahtet).
-- **Das Secret steht NIE in `config.json`** — nur `tenantId`/`clientId`. `secretRef` zeigt auf die
-  DPAPI-Datei.
-- `author` ist strukturiert; der Skill setzt `AppScriptAuthor = "<person>, <company>"` zusammen.
+- Covers the four user-requested values: storage (`paths.packageRoot`/`outputRoot`), language
+  (`language.script`/`dossier`), tool path (`paths.intuneWinAppUtil`), upload + app-reg (`intune.*`).
+  Plus `author` (previously hard-coded) and `tooling` (tool version tracking).
+- **The secret is NEVER in `config.json`** — only `tenantId`/`clientId`. `secretRef` points to the
+  DPAPI file.
+- `author` is structured; the skill composes `AppScriptAuthor = "<person>, <company>"`.
+- `paths.intuneWinAppUtil` defaults to the skill-managed `tools/IntuneWinAppUtil.exe`.
+- `tooling.intuneWinAppUtilVersion`/`Sha` record the installed tool tag + blob sha to detect updates.
 - `intune.defaultAssignment` ∈ `{ "available", "required", "none" }`.
-- Wenn der `intune`-Block fehlt ODER `uploadEnabled: false`, ist der Upload deaktiviert.
+- If the `intune` block is absent OR `uploadEnabled: false`, upload is disabled.
 
-## 5. Komponenten
+## 5. Components
 
 ### 5.1 `Get-PsadtConfig.ps1`
-- Liest `config.json`, gibt ein PowerShell-Objekt zurueck.
-- Validiert Vollstaendigkeit; gibt eine **Liste fehlender/ungueltiger Felder** zurueck, damit der
-  Wizard gezielt nur diese nachfragt.
-- Entschluesselt das Secret NICHT von sich aus (separater Pfad nur zur Upload-Zeit).
+- Reads `config.json`, returns a PowerShell object.
+- Validates completeness; returns a **list of missing/invalid fields** so the wizard asks only those.
+- Does not decrypt the secret itself (separate path only at upload time).
 
 ### 5.2 `Set-PsadtConfig.ps1`
-- Schreibt/aktualisiert `config.json` (partielle Updates moeglich, Schema-validiert).
-- Nimmt das Secret als Parameter entgegen, **DPAPI-verschluesselt** es (Scope CurrentUser) nach
-  `secret.dpapi`. Secret wird nie nach `config.json` oder in Logs geschrieben, nie zurueckgegeben.
+- Writes/updates `config.json` (partial updates, schema-validated).
+- Takes the secret as a parameter and **DPAPI-encrypts** it (scope CurrentUser) to `secret.dpapi`.
+  The secret is never written to `config.json` or logs and never returned.
 
-### 5.3 `Invoke-IntuneWin32Upload.ps1`
-- Holt App-only-Token via Client-Secret (Tenant-/Client-ID aus Config, Secret per DPAPI entschluesselt,
-  nur in-memory).
-- Legt `win32LobApp` an, erstellt Content-Version, nutzt die Verschluesselungs-Metadaten aus der
-  `.intunewin` (Detection.xml) fuer den **Block-Blob-Upload** nach Azure Storage, committed die Version.
-- Laedt das App-Logo separat hoch (Graph kann das, kein Repack der `.intunewin` noetig).
-- Setzt Assignment gemaess `defaultAssignment`.
-- **Idempotent:** Existiert eine App gleichen DisplayName + Version bereits, wird vor
-  Ueberschreiben/Supersedence gefragt.
-- Gibt App-ID + Portal-Link zurueck.
+### 5.3 `Get-IntuneWinAppUtil.ps1`
+- Ensures `tools/IntuneWinAppUtil.exe` is present and current.
+- Queries the official repo `microsoft/Microsoft-Win32-Content-Prep-Tool` for the latest release tag
+  (currently `v1.8.7`); releases carry **no assets**, so the exe is fetched from the repo tree at the
+  tag via raw URL.
+- Downloads if missing or outdated (compares stored `tooling.*` against latest), then records the new
+  tag + blob sha. Reports "already current" otherwise.
 
-### 5.4 `Test-PsadtSetup.ps1`
-- Auth-Smoke-Test: Token holen + ein einfacher Graph-GET (z.B. `/deviceAppManagement/mobileApps?$top=1`).
-- Liefert klare Diagnose bei Fehlern (Secret falsch / Permission fehlt / Admin-Consent fehlt).
+### 5.4 `Invoke-IntuneWin32Upload.ps1`
+- Acquires an app-only token via client secret (tenant/client id from config, secret DPAPI-decrypted,
+  in-memory only).
+- Creates the `win32LobApp`, creates a content version, uses the encryption metadata from the
+  `.intunewin` (Detection.xml) for the **block-blob upload** to Azure Storage, commits the version.
+- Uploads the app logo separately (Graph supports this; no `.intunewin` repack needed).
+- Sets assignment per `defaultAssignment`.
+- **Idempotent:** if an app with the same display name + version already exists, it asks before
+  overwrite/supersedence.
+- Returns app id + portal link.
 
-### 5.5 `references/app-registration.md`
-Kurz-Checkliste zur Entra-App-Registrierung:
+### 5.5 `Test-PsadtSetup.ps1`
+- Auth smoke test: acquire token + a simple Graph GET (e.g. `/deviceAppManagement/mobileApps?$top=1`).
+- Clear diagnostics on failure (wrong secret / missing permission / missing admin consent).
+
+### 5.6 `references/app-registration.md`
+Short Entra app-registration checklist:
 1. Entra Admin Center → App registrations → New registration
 2. API permissions → Microsoft Graph → **Application** → `DeviceManagementApps.ReadWrite.All`
 3. **Grant admin consent**
-4. Certificates & secrets → New client secret → Wert kopieren (nur einmal sichtbar)
-5. Tenant-ID + Client-ID + Secret ins Setup eingeben
+4. Certificates & secrets → New client secret → copy the value (shown once)
+5. Enter tenant id + client id + secret into setup
 
-## 6. SKILL.md-Aenderungen
+## 6. SKILL.md changes
 
-### 6.1 Phase 0 — Setup (neu, vor Intake)
-- Skill ruft `Get-PsadtConfig.ps1`. Vollstaendig → direkt zu Intake. Fehlt/unvollstaendig → Wizard
-  (fragt nur fehlende Felder).
-- Wizard als AskUserQuestion-Batches (Klick-Optionen, empfohlene Option zuerst):
-  1. **Pfade** (`packageRoot`, `outputRoot`, `intuneWinAppUtil`) — aktuelle Werte als Defaults
-  2. **Sprachen** (`script`=EN, `dossier`=DE als Defaults)
-  3. **Author** — Person + Firma getrennt (Defaults = bisherige Konvention)
-  4. **Intune-Upload**: Ja / Nein / Spaeter
-  5. Falls Ja: Tenant-ID, Client-ID (Freitext), Secret (Freitext → sofort DPAPI, nie zurueckgezeigt),
-     `defaultAssignment`
-- Bei Ja: `Test-PsadtSetup.ps1` ausfuehren; rot → klare Meldung, `uploadEnabled` wird erst nach
-  gruenem Test `true`.
-- Explizit re-triggerbar ("psadt setup") → einzelne Werte aendern.
-- Verlinkt `references/app-registration.md`.
+### 6.1 Phase 0 — Setup (new, before Intake)
+- Skill calls `Get-PsadtConfig.ps1`. Complete → straight to Intake. Missing/incomplete → wizard
+  (asks only missing fields).
+- Wizard as AskUserQuestion batches (clickable options, recommended option first):
+  1. **Paths** (`packageRoot`, `outputRoot`, `intuneWinAppUtil`) — current values as defaults
+  2. **Languages** (`script`=EN, `dossier`=DE as defaults)
+  3. **Author** — person + company separately (defaults = existing convention)
+  4. **Intune upload**: Yes / No / Later
+  5. If Yes: tenant id, client id (free text), `defaultAssignment`. The **secret NOT via chat** — the
+     skill prints a terminal one-liner (`Read-Host -AsSecureString` → `Set-PsadtConfig.ps1`) that
+     DPAPI-encrypts it immediately (see 6.5 / section 7).
+- On Yes: run `Test-PsadtSetup.ps1`; red → clear message, `uploadEnabled` becomes `true` only after a
+  green test.
+- Provision the content-prep tool via `Get-IntuneWinAppUtil.ps1` during setup.
+- Explicitly re-triggerable ("psadt setup") → change individual values.
+- Links `references/app-registration.md`.
 
-### 6.2 Config statt Hardcode
-Ueberall im Skill die festen Werte durch Config-Lookups ersetzen: `outputRoot`, `intuneWinAppUtil`,
-`author`, Sprachen. Die bisherigen VERBINDLICHEN Werte bleiben als **Defaults** erhalten — jetzt
-config-getrieben statt im Text gemauert.
+### 6.2 Config instead of hard-code
+Replace fixed values throughout the skill with config lookups: `outputRoot`, `intuneWinAppUtil`,
+`author`, languages. The previous mandatory values remain as **defaults** — now config-driven instead
+of baked into the prose.
 
-### 6.3 Neue Phase — Intune-Upload (optional, zwischen Packen und Test)
-- Nur bei `uploadEnabled: true`. Sonst: bisheriger manueller Flow, explizit als Fallback dokumentiert.
-- Auch bei `uploadEnabled: true` **pro Lauf ablehnbar** (z.B. Kunden-Tenant ohne Rechte) → manueller
-  Fallback.
-- `Invoke-IntuneWin32Upload.ps1` aufrufen, Ergebnis (App-ID + Portal-Link) anzeigen.
+### 6.3 New phase — Intune upload (optional, between pack and test)
+- Only when `uploadEnabled: true`. Otherwise the existing manual flow, explicitly documented as the
+  fallback.
+- Even when `uploadEnabled: true`, **declinable per run** (e.g. customer tenant without rights) →
+  manual fallback.
+- Call `Invoke-IntuneWin32Upload.ps1`, show the result (app id + portal link).
 
-### 6.4 HTML-Umstellung (neue Konvention)
-- Dossier → `Intune-Dossier.html`, komplett HTML; Beschreibungs-Block als sauberes HTML
-  (Intune-Beschreibungsfeld hat HTML-Editor).
-- Konventionen-Block, Phase 7 und Anti-Patterns von "Markdown" auf "HTML" umschreiben.
-- `SKILL.md` selbst bleibt Markdown.
-- Echte DE-Umlaute im Dossier bleiben; Scripts bleiben EN/ASCII (Encoding-Sauberkeit unveraendert).
+### 6.4 HTML switch (new convention)
+- Dossier → `Intune-Dossier.html`, full HTML; description block as clean HTML (the Intune description
+  field has an HTML editor).
+- Rewrite the conventions block, Phase 7 and anti-patterns from "Markdown" to "HTML".
+- German umlauts remain in the dossier; scripts stay EN/ASCII (encoding hygiene unchanged).
 
-### 6.5 DPAPI-Ablauf informativ im Skill verankern
-Die `SKILL.md` bekommt einen kurzen, **informativen** Abschnitt, der den DPAPI-Ablauf erklaert —
-damit der Skill einem User auf Rueckfrage ("wie wird mein Secret gespeichert?") sauber antworten kann:
-- Verschluesselung erfolgt **automatisch** durch `Set-PsadtConfig.ps1` (Windows-DPAPI,
-  `ConvertFrom-SecureString`, Scope CurrentUser) — der User macht die Krypto NICHT von Hand.
-- Das Secret wird **im eigenen Terminal** per `Read-Host -AsSecureString` eingegeben, damit es nie ins
-  Claude-Transkript gelangt (Tool-Aufrufe sind nicht-interaktiv → das Setup gibt dem User den
-  Einzeiler aus, statt das Secret selbst abzufragen).
-- Bindung an User+Maschine: ein kopiertes `secret.dpapi` ist auf einer anderen Maschine/unter anderem
-  User wertlos.
-- Entschluesselung nur in-memory zur Upload-Zeit; bei Secret-Rotation Setup erneut anstossen.
+### 6.5 Document the DPAPI flow informatively in the skill
+`SKILL.md` gains a short, **informative** section explaining the DPAPI flow so the skill can answer a
+user asking "how is my secret stored?":
+- Encryption happens **automatically** in `Set-PsadtConfig.ps1` (Windows DPAPI,
+  `ConvertFrom-SecureString`, scope CurrentUser) — the user does not do crypto by hand.
+- The secret is entered **in the user's own terminal** via `Read-Host -AsSecureString` so it never
+  reaches the Claude transcript (tool calls are non-interactive → setup prints the one-liner instead
+  of asking for the secret itself).
+- Bound to user + machine: a copied `secret.dpapi` is worthless on another machine/under another user.
+- Decryption only in-memory at upload time; on secret rotation, re-run setup.
 
-## 7. Sicherheit
+### 6.6 English translation
+Translate `SKILL.md` and `references/PSADTv4-Deployment-Guide.md` to English. The skill keeps
+producing **German** dossier/description output per convention; only the skill-internal text becomes
+English. Author and version conventions (`0.1` start, mandatory changelog in `.NOTES`) are preserved.
 
-- Secret ausschliesslich per **DPAPI (Scope CurrentUser)** → an User+Maschine gebunden, kein Klartext
-  im Profil.
-- **Secret-Eingabe NICHT ueber den Chat:** Das Setup laesst den User das Secret im eigenen Terminal per
-  `Read-Host -AsSecureString` eingeben (Einzeiler vom Skill ausgegeben). So landet der Klartext nie im
-  Konversations-Transkript. `AskUserQuestion`-Freitext fuer das Secret wird bewusst vermieden.
-- Secret nie in `config.json`, nie in Logs, nie im Konversations-Output; Entschluesselung nur
-  in-memory zur Upload-Zeit.
-- Setup zeigt das eingegebene Secret nach Eingabe nicht erneut an.
+## 7. Security
 
-## 8. Fehlerbehandlung
+- Secret only via **DPAPI (scope CurrentUser)** → bound to user + machine, no plaintext in the profile.
+- **Secret entry NOT via chat:** setup has the user enter the secret in their own terminal via
+  `Read-Host -AsSecureString` (one-liner printed by the skill). The plaintext never lands in the
+  conversation transcript. `AskUserQuestion` free text for the secret is deliberately avoided.
+- Secret never in `config.json`, never in logs, never in conversation output; decryption only
+  in-memory at upload time.
+- Setup does not re-display the entered secret.
+- `.gitignore` excludes `config.json`, `secret.dpapi` and `tools/` (plus a `*.dpapi`/key safety net).
 
-- `Get-PsadtConfig.ps1` liefert strukturierte "fehlende Felder" → Wizard fragt nur diese.
-- `Test-PsadtSetup.ps1` / Upload: Token-Fehler → klare Ursache (Secret/Permission/Consent). Graph-4xx
-  durchreichen statt verschlucken.
-- Upload idempotent: bestehende App gleicher Version → vor Ueberschreiben/Supersedence fragen.
-- Fehlender/abgelehnter Upload ist kein Fehler → sauberer Fallback auf manuellen Flow.
+## 8. Error handling
+
+- `Get-PsadtConfig.ps1` returns structured "missing fields" → wizard asks only those.
+- `Test-PsadtSetup.ps1` / upload: token failure → clear cause (secret/permission/consent). Pass Graph
+  4xx through instead of swallowing.
+- Upload idempotent: existing app of same version → ask before overwrite/supersedence.
+- `Get-IntuneWinAppUtil.ps1`: download/network failure → clear message; keep any existing working copy.
+- A missing/declined upload is not an error → clean fallback to the manual flow.
 
 ## 9. Tests
 
-- Helfer-Skripte: parse-clean (AST), DPAPI-Round-Trip-Test (verschluesseln → entschluesseln → gleich).
-- `Get`/`Set-PsadtConfig`: Schema-Validierung, partielle Updates, Erkennung fehlender Felder.
-- `Test-PsadtSetup.ps1` als Live-Auth-Check (gegen einen Test-Tenant, wo verfuegbar).
-- `Invoke-IntuneWin32Upload.ps1`: gegen Test-Tenant ein echtes Klein-Paket hochladen, App-ID
-  pruefen, danach wieder aufraeumen.
+- Helper scripts: parse-clean (AST), DPAPI round-trip test (encrypt → decrypt → equal).
+- `Get`/`Set-PsadtConfig`: schema validation, partial updates, missing-field detection.
+- `Get-IntuneWinAppUtil.ps1`: fresh download, up-to-date no-op, forced-update path; verify recorded
+  version/sha.
+- `Test-PsadtSetup.ps1` as a live auth check (against a test tenant where available).
+- `Invoke-IntuneWin32Upload.ps1`: upload a real small package to a test tenant, verify app id, then
+  clean up.
 
-## 10. Bewusst NICHT im Scope (YAGNI)
+## 10. Out of scope (YAGNI)
 
-- Zertifikat- oder Delegated-Auth (Entscheidung: Client-Secret).
-- Verteilung als Claude-Code-Plugin / Marketplace.
-- Multi-Tenant-Profile in einer Config (eine Config pro Maschine; Tenant-Wechsel via Re-Setup).
-- Automatische Secret-Rotation.
+- Certificate or delegated auth (decision: client secret).
+- Distribution as a Claude Code plugin / marketplace.
+- Multi-tenant profiles in one config (one config per machine; tenant switch via re-setup).
+- Automatic secret rotation.
+- Committing the content-prep tool binary into the repo (it is auto-downloaded and gitignored).

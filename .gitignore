@@ -1,8 +1,11 @@
-# Maschinenlokaler Laufzeit-Zustand des Setups - NIE einchecken
+# Machine-local runtime state created by setup - NEVER commit
 config.json
 secret.dpapi
 
-# Sicherheits-Sicherheitsnetz: keinerlei Secret-/Key-Artefakte
+# Auto-downloaded content-prep tool (provisioned + version-checked by the skill)
+tools/
+
+# Safety net: never commit any secret/key artifacts
 *.dpapi
 *.pfx
 *.cer

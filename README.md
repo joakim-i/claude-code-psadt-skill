@@ -1,38 +1,132 @@
-# claude-code-psadt-skill
+<h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
 
-Ein **Claude-Code-Skill** (kein Plugin) fuer den kompletten Lebenszyklus eines
-**PSADT-v4.x-Intune-Win32-Pakets** — vom ersten Gespraech bis zum getesteten,
-hochladefertigen `.intunewin`, optional inklusive Direkt-Upload nach Intune via
-Microsoft Graph.
+<p align="center">
+  <em>A Claude Code skill that drives the full lifecycle of a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 package — from first conversation to a tested, upload-ready <code>.intunewin</code>.</em>
+</p>
 
-## Inhalt
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/PSADT-v4.x-0a7bbb?style=flat-square" alt="PSADT v4.x" />
+  <img src="https://img.shields.io/badge/Platform-Windows-0078d6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/Claude%20Code-Skill-d97757?style=flat-square" alt="Claude Code Skill" />
+</p>
 
-| Pfad | Zweck |
-|---|---|
-| `SKILL.md` | Der Skill selbst (Markdown). |
-| `scripts/` | Helfer-Skripte (Config lesen/schreiben, DPAPI, Graph-Upload, Auth-Test). |
-| `references/` | Nachschlag (z.B. Anleitung Entra-App-Registrierung). |
-| `docs/superpowers/specs/` | Design-Dokumente / Specs. |
+---
+
+## What is this?
+
+This is a **Claude Code skill** (not a plugin): a reusable instruction package that teaches the agent
+how to build, package, test, troubleshoot, and deploy a **PSADT v4.x Intune Win32 app**. You describe
+the application; the skill runs the whole workflow — intake, web research, scaffolding, customizing all
+three deployment types (Install / Uninstall / Repair), pre-flight checks, packaging with
+IntuneWinAppUtil, dossier generation, testing, and rollout.
+
+A skill is a folder with a `SKILL.md` (YAML frontmatter + Markdown instructions), optionally bundled
+with `scripts/`, `references/`, and `tools/`. It loads progressively: the agent sees only the name and
+description until a task makes it relevant, then the full body loads on demand.
+
+## Features
+
+- **Guided intake** — asks the blocker questions up front as clickable options, pre-filled with
+  researched defaults (app, latest version, installer type).
+- **Autonomous research** — checks the installed PSADT version against the latest release *and* whether
+  commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
+- **All three deployment types** — Install, Uninstall, and Repair are built and acid-tested from the
+  start, so Company-Portal uninstalls actually work.
+- **Pre-flight checks** — encoding/BOM, AST parse, launcher acid-test per deployment type, and a v3
+  cmdlet scan before anything is packaged.
+- **First-run setup** *(in progress)* — a one-time wizard persists machine config (paths, language,
+  author) so conventions are configured once, in one place.
+- **Self-managed content-prep tool** *(in progress)* — auto-downloads `IntuneWinAppUtil.exe` and keeps
+  it current against the official Microsoft repo; no manual provisioning.
+- **Optional direct Intune upload** *(in progress)* — uploads the `.intunewin` via Microsoft Graph with
+  an app registration (client secret stored DPAPI-encrypted). Fully optional: falls back to the manual
+  dossier flow in tenants where you cannot register an app (e.g. customer tenants).
+- **Deliverable dossier** — produces the Intune metadata, return-code map, detection, and a ready-to-paste
+  app description, plus a transparent high-resolution logo.
+
+## Requirements
+
+- Windows with PowerShell 5.1+ / PowerShell 7+
+- [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x module installed
+- [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
+  *(the skill provisions this automatically)*
+- For optional direct upload: an Entra app registration with the Graph **application** permission
+  `DeviceManagementApps.ReadWrite.All` (admin consent granted) — see
+  [`references/app-registration.md`](references/app-registration.md)
 
 ## Installation
 
-Den Skill-Ordner nach `~/.claude/skills/psadt-deploy/` kopieren oder verlinken
-(Repo-Root entspricht dem Skill-Ordner). Anschliessend laeuft beim ersten Aufruf
-automatisch das Setup (Phase 0).
+Clone into your Claude Code skills directory (the repo root *is* the skill folder):
 
-## Konfiguration (maschinenlokal, NICHT im Repo)
+```bash
+git clone https://github.com/pt1987/claude-code-psadt-skill.git ~/.claude/skills/psadt-deploy
+```
 
-Das Setup erzeugt pro Maschine:
+On Windows (PowerShell):
 
-- `config.json` — Pfade, Sprache, Author, optionale Intune-Upload-Settings (Tenant-/Client-ID).
-- `secret.dpapi` — das Client-Secret, **DPAPI-verschluesselt** (Scope CurrentUser), an
-  User+Maschine gebunden.
+```powershell
+git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFILE\.claude\skills\psadt-deploy"
+```
 
-Beide Dateien sind per `.gitignore` ausgeschlossen und werden nie eingecheckt.
+The skill activates automatically when you ask Claude Code to build an Intune package, or when you work
+in a folder containing `Invoke-AppDeployToolkit.ps1`.
 
-## Hinweise
+## First-run setup
 
-- **Kein Plugin:** bewusst als reiner Skill gehalten. Eine spaetere Plugin-Verpackung
-  waere ein separater Schritt.
-- **Intune-Upload ist optional:** ohne eingerichtete App-Registrierung faellt der Skill
-  auf den manuellen Upload via Dossier zurueck (z.B. in Kunden-Tenants ohne Registrierungsrechte).
+On the first run (or when you say *"psadt setup"*), the skill walks a short wizard and writes a local
+`config.json`:
+
+| Setting | Purpose |
+|---|---|
+| `paths.packageRoot` / `outputRoot` | Where packages live and where `.intunewin` files are written |
+| `paths.intuneWinAppUtil` | Content-prep tool location (skill-managed by default) |
+| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) |
+| `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
+| `intune.*` | Optional direct-upload settings (tenant id, client id, default assignment) |
+
+`config.json`, `secret.dpapi`, and `tools/` are **machine-local** and are never committed.
+
+### Secret handling (DPAPI)
+
+If you enable direct upload, the client secret is **never typed into the chat**. The skill prints a
+terminal one-liner that reads the secret via `Read-Host -AsSecureString` and encrypts it with Windows
+**DPAPI** (scope `CurrentUser`) into `secret.dpapi`. It is bound to your user + machine, decrypted only
+in-memory at upload time, and never written to `config.json` or any log.
+
+## Project structure
+
+```
+psadt-deploy/
+├─ SKILL.md                          the skill itself
+├─ README.md  ·  LICENSE
+├─ scripts/                          Get/Set-PsadtConfig, Get-IntuneWinAppUtil,
+│                                    Invoke-IntuneWin32Upload, Test-PsadtSetup
+├─ references/                       PSADTv4-Deployment-Guide.md, app-registration.md
+├─ docs/superpowers/specs/           design documents
+├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
+├─ config.json   (gitignored)        machine-local settings
+└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret
+```
+
+## Status
+
+The core build/package/test/dossier workflow is in active use. The **first-run setup**, **self-managed
+content-prep tool**, **optional Graph upload**, and **HTML deliverables** are being implemented per the
+[design spec](docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Keep `SKILL.md`, references, and docs in **English**; the only
+intentionally German output is the generated Intune dossier and Company-Portal app description (end-user
+text).
+
+## License
+
+[MIT](LICENSE) © Patrick Taubert, PHAT Consulting GmbH
+
+## Acknowledgements
+
+- [PSAppDeployToolkit](https://github.com/PSAppDeployToolkit/PSAppDeployToolkit)
+- [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
+- README structure inspired by [ComposioHQ/awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills)
