@@ -13,7 +13,7 @@ This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package*
 
 **Binding conventions (details in the block below):**
 - ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
-- Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ (default `c:\Temp\PSADTv4\Output\`; actual value from the config via `Get-PsadtConfig`)
+- Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ - the output root is configured by the user during setup (NO hard-coded default); read it from config via `Get-PsadtConfig`
 - Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
 - Author ALWAYS assembled from config (`author.person` + `author.company`, set during setup - no hard-coded default); first script version `0.1`; changelog in the `.NOTES` header is mandatory
 - Obtain app logo (PNG, transparent, high resolution) -> `Assets\` + `Output\<App>\`
@@ -265,24 +265,26 @@ $ast.EndBlock.Statements | Where-Object { $_ -isnot [System.Management.Automatio
 **Tool path and version are config-driven** (`paths.intuneWinAppUtil`) and are provisioned and kept current by `scripts/Get-IntuneWinAppUtil.ps1` (the inline download below stays as a manual fallback).
 
 **Output folder convention (BINDING, not somewhere different each time):** ALWAYS place the finished `.intunewin` into
-`c:\Temp\PSADTv4\Output\<AppName[-Version]>\` - a central `Output` folder in the PSADTv4 main directory,
-with a sub-folder per app underneath (e.g. `Output\EclipseJEE\`, `Output\RSAT-1.0.0\`, `Output\ApacheMaven-3.9.16\`).
+`<paths.outputRoot>\<AppName[-Version]>\` - the output root comes from config (set by the user during setup, no hard-coded path),
+with a sub-folder per app underneath (e.g. `<outputRoot>\EclipseJEE\`, `<outputRoot>\RSAT-1.0.0\`, `<outputRoot>\ApacheMaven-3.9.16\`).
 NEVER create a separate `_IntuneOutput`/`<App>-IntuneOutput` folder next to the package. The app sub-folder holds,
 besides the `.intunewin`, also the detection script and the Intune dossier (1 place per app, everything together).
 Important: `-c` (source) is the PACKAGE folder, `-o` (output) is the central output sub-folder - the two are
 different trees, so `-o` automatically lies OUTSIDE `-c`.
 
 ```powershell
-# Fetch IntuneWinAppUtil (the GitHub release has NO assets - the exe lives in the repo tree, hence raw download)
-$tool = 'C:\Tools\IntuneWinAppUtil.exe'
+# All paths come from config - nothing hard-coded.
+$cfg  = & scripts/Get-PsadtConfig.ps1
+$tool = $cfg.Config.paths.intuneWinAppUtil    # provisioned + kept current by Get-IntuneWinAppUtil.ps1 (skill-managed tools/ by default)
 if (-not (Test-Path $tool)) {
-    New-Item 'C:\Tools' -ItemType Directory -Force | Out-Null
+    # manual fallback if the tool was not provisioned yet (the GitHub release has NO assets - exe lives in the repo tree)
+    New-Item (Split-Path $tool -Parent) -ItemType Directory -Force | Out-Null
     $tag = (Invoke-RestMethod 'https://api.github.com/repos/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest').tag_name
     Invoke-WebRequest "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/$tag/IntuneWinAppUtil.exe" -OutFile $tool
 }
 
 $src = '<pkgFolder>'                                            # package folder with Invoke-AppDeployToolkit.ps1/.exe
-$out = 'c:\Temp\PSADTv4\Output\<AppName[-Version]>'             # CENTRAL, per-app sub-folder
+$out = Join-Path $cfg.Config.paths.outputRoot '<AppName[-Version]>'   # CENTRAL, per-app sub-folder (from config)
 New-Item $out -ItemType Directory -Force | Out-Null
 & $tool -c $src -s 'Invoke-AppDeployToolkit.exe' -o $out -q
 # Place the detection script + dossier alongside (dossier ALWAYS as Intune-Dossier.html):

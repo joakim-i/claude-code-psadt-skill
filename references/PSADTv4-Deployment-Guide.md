@@ -173,7 +173,7 @@ The values come from the intake in Phase 0.2 - replace `<...>` with the ACTUAL v
 **Basic scaffold (only destination + name):**
 ```powershell
 New-ADTTemplate -Destination '<Root-Ordner>' -Name '<AppName>'
-# z.B. New-ADTTemplate -Destination 'C:\Temp\PSADTv4' -Name 'FooBar 10'
+# e.g. New-ADTTemplate -Destination '<paths.packageRoot from config>' -Name 'FooBar 10'
 ```
 
 Creates `<Root-Ordner>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
@@ -215,8 +215,8 @@ The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppD
 ### 1.3 First verification of the scaffold
 
 ```powershell
-$pkg = '<Scaffold-Pfad>'   # z.B. 'C:\Temp\PSADTv4\<AppName>'
-# Modulversion im Scaffold muss der installierten Version entsprechen
+$pkg = '<scaffold path>'   # e.g. '<paths.packageRoot from config>\<AppName>'
+# the module version in the scaffold must match the installed version
 (Import-PowerShellDataFile "$pkg\PSAppDeployToolkit\PSAppDeployToolkit.psd1").ModuleVersion
 # Template-Version im Script
 Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersion' -List | Select-Object Line
@@ -428,9 +428,9 @@ Microsoft's official packaging tool. Always the current version:
 - Direct download (releases/latest): `https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest`
 
 ```powershell
-$tool = 'C:\Tools\IntuneWinAppUtil.exe'
+$tool = '<paths.intuneWinAppUtil from config>'   # skill-managed tools/ by default; provisioned by Get-IntuneWinAppUtil.ps1
 if (-not (Test-Path $tool)) {
-    New-Item 'C:\Tools' -ItemType Directory -Force | Out-Null
+    New-Item (Split-Path $tool -Parent) -ItemType Directory -Force | Out-Null
     $latest = Invoke-RestMethod 'https://api.github.com/repos/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest'
     $asset = $latest.assets | Where-Object { $_.name -eq 'IntuneWinAppUtil.exe' } | Select-Object -First 1
     Invoke-WebRequest $asset.browser_download_url -OutFile $tool
@@ -441,9 +441,9 @@ if (-not (Test-Path $tool)) {
 ### 4.2 Package
 
 ```powershell
-$src = '<Paketordner aus Phase 1>'                  # z.B. 'C:\Temp\PSADTv4\<AppName>'
-$setupFile = 'Invoke-AppDeployToolkit.exe'         # IMMER die .exe, NICHT die .ps1
-$out = '<Ausgabeordner AUSSERHALB von $src>'       # z.B. 'C:\Temp\PSADTv4\_output\<AppName>' - NICHT im src!
+$src = '<package folder from phase 1>'              # e.g. '<paths.packageRoot>\<AppName>'
+$setupFile = 'Invoke-AppDeployToolkit.exe'         # ALWAYS the .exe, NOT the .ps1
+$out = '<output folder OUTSIDE $src>'               # from config: '<paths.outputRoot>\<AppName>' - NOT inside src!
 New-Item $out -ItemType Directory -Force | Out-Null
 
 & $tool -c $src -s $setupFile -o $out -q
