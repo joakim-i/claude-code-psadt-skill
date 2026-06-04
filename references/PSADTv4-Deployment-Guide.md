@@ -1,26 +1,26 @@
 # PSADT v4.x Deployment Guide - Intune
 
-Verbindliche End-to-End-Anleitung fuer Intune-Win32-Pakete mit PSADT 4.x. In dieser Reihenfolge abarbeiten. Keine Phasen ueberspringen.
+Mandatory end-to-end guide for Intune Win32 packages with PSADT 4.x. Work through it in this order. Do not skip any phases.
 
-- **Phase 0**: Recherche + Intake (VOR dem ersten Klick)
+- **Phase 0**: Research + Intake (BEFORE the first click)
 - **Phase 1**: Scaffold via `New-ADTTemplate`
-- **Phase 2**: Script-Customizing
-- **Phase 3**: Pre-Flight-Checks (Encoding, Parse, Launcher-Simulation)
-- **Phase 4**: .intunewin bauen
-- **Phase 5**: Intune-App-Konfiguration
-- **Phase 6**: Test-Sequenz
+- **Phase 2**: Script customizing
+- **Phase 3**: Pre-flight checks (encoding, parse, launcher simulation)
+- **Phase 4**: Build the .intunewin
+- **Phase 5**: Intune app configuration
+- **Phase 6**: Test sequence
 - **Phase 7**: Rollout
-- **Anhaenge**: A Error-Ref / B Anti-Patterns / C Stub-Tricks / D Ressourcen / E Final-Checklist / F Intune-Upload-Dossier / G Lessons Learned
+- **Appendices**: A Error Reference / B Anti-Patterns / C Stub Tricks / D Resources / E Final Checklist / F Intune Upload Dossier / G Lessons Learned
 
 ---
 
-## Phase 0: Recherche + Intake (NICHT ueberspringen)
+## Phase 0: Research + Intake (DO NOT skip)
 
-### 0.1 Aktuelle PSADT-Version pruefen
+### 0.1 Check the current PSADT version
 
-Bevor irgendein Paket gebaut wird: ist das lokale PSADT-Modul noch aktuell? Breaking Changes zwischen Minor-Versionen kommen vor (4.0.x -> 4.1.x Param-Umbenennungen).
+Before any package is built: is the local PSADT module still up to date? Breaking changes between minor versions do happen (4.0.x -> 4.1.x parameter renames).
 
-**Check-Befehle (online + lokal):**
+**Check commands (online + local):**
 
 ```powershell
 # Lokale Modulversion
@@ -32,82 +32,82 @@ $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppD
 $rel.body -split "`n" | Select-Object -First 40   # Changelog-Auszug
 ```
 
-**Docs-Stand pruefen:**
-- Release-Notes: https://psappdeploytoolkit.com/docs/getting-started/release-notes
-- Migrations-Guide (v3 -> v4): https://psappdeploytoolkit.com/docs/migration/migrate-from-v3
-- Reference-Index (alle Cmdlets): https://psappdeploytoolkit.com/docs/reference
-- Blog (Releases + Community Updates): https://psappdeploytoolkit.com/blog
-- Discourse (Forum): https://discourse.psappdeploytoolkit.com/latest
+**Check the documentation status:**
+- Release notes: https://psappdeploytoolkit.com/docs/getting-started/release-notes
+- Migration guide (v3 -> v4): https://psappdeploytoolkit.com/docs/migration/migrate-from-v3
+- Reference index (all cmdlets): https://psappdeploytoolkit.com/docs/reference
+- Blog (releases + community updates): https://psappdeploytoolkit.com/blog
+- Discourse (forum): https://discourse.psappdeploytoolkit.com/latest
 
-**Entscheidung:**
-- Lokal < Latest Minor: Modul aktualisieren (`Update-Module PSAppDeployToolkit -Force` oder aus GitHub-Release entpacken) BEVOR neues Paket gebaut wird
-- Lokal == Latest: weiter
-- Lokal > Latest (Beta): auf stable downgraden, keine Beta in Prod
+**Decision:**
+- Local < latest minor: update the module (`Update-Module PSAppDeployToolkit -Force` or extract from the GitHub release) BEFORE building a new package
+- Local == latest: continue
+- Local > latest (beta): downgrade to stable, no beta in production
 
-Die Modul-Version muss im Paket `<pkg>\PSAppDeployToolkit\PSAppDeployToolkit.psd1` `ModuleVersion = '<VER>'` exakt zu dem passen, was im Script `$adtSession.DeployAppScriptVersion = '<VER>'` steht UND zur `Invoke-AppDeployToolkit.exe`-Build-Version (RightClick-Properties-Details).
+The module version in the package `<pkg>\PSAppDeployToolkit\PSAppDeployToolkit.psd1` `ModuleVersion = '<VER>'` must exactly match what the script declares in `$adtSession.DeployAppScriptVersion = '<VER>'` AND the `Invoke-AppDeployToolkit.exe` build version (right-click properties, details).
 
-### 0.2 Intake-Fragen zur App (bevor auch nur eine Zeile Code entsteht)
+### 0.2 Intake questions about the app (before a single line of code exists)
 
-Ohne Antworten zu diesen Punkten wird das Paket Mist. Mit Stakeholder / User klaeren:
+Without answers to these points the package will be junk. Clarify with the stakeholder / user:
 
-**App-Identitaet:**
-- Exakter Produktname und Hersteller (wie im Company Portal stehen soll)
-- Version (Marketing-Version + Dateiversion im MSI / Setup.exe)
-- Sprache (EN, DE, Multi?)
-- Architektur (x86 / x64 / ARM64 / Universal)
-- Lizenzmodell (Freeware, Pro, Enterprise, Named User, Device, Subscription? Lizenzkey noetig? Activation-Server?)
+**App identity:**
+- Exact product name and vendor (as it should appear in the Company Portal)
+- Version (marketing version + file version in the MSI / Setup.exe)
+- Language (EN, DE, Multi?)
+- Architecture (x86 / x64 / ARM64 / Universal)
+- Licensing model (Freeware, Pro, Enterprise, Named User, Device, Subscription? License key needed? Activation server?)
 
 **Installer:**
-- Quell-Medium: MSI, EXE-Wrapper (um MSI), InstallShield, NSIS, AppX/MSIX, Squirrel, selbstgebautes?
-- Download-URL des offiziellen Installers (fuer Reproduzierbarkeit) + Hash
-- Silent-Install-Switches bekannt? (siehe 0.3)
-- Uninstall-Methode: MSI-ProductCode, Uninstallstring in Registry, Custom-Uninstaller?
-- Repair-Unterstuetzung?
-- Reboot-Verhalten (erfordert, empfiehlt, nie)
-- Abhaengigkeiten: .NET, VC++ Redist, Java, Edge-WebView2, PowerShell-Version?
+- Source medium: MSI, EXE wrapper (around an MSI), InstallShield, NSIS, AppX/MSIX, Squirrel, self-built?
+- Download URL of the official installer (for reproducibility) + hash
+- Silent install switches known? (see 0.3)
+- Uninstall method: MSI product code, uninstall string in the registry, custom uninstaller?
+- Repair support?
+- Reboot behavior (requires, recommends, never)
+- Dependencies: .NET, VC++ Redist, Java, Edge WebView2, PowerShell version?
 
-**Ziel-Umgebung:**
-- Intune-Zielgruppe (User- oder Device-based? AAD-Gruppe, Filter?)
-- Install-Context: System (klassisch), User (selten), Available + Required?
-- Min-OS-Version, Architecture-Filter
-- Koexistenz mit Vorversionen: Upgrade-in-Place, Side-by-Side, Force-Uninstall-Altversionen?
-- Conflicting-Apps: gibt's konkurrierende Produkte die raus muessen?
-- Roaming-Profile / FSLogix / Nicht-persistente-VDI?
+**Target environment:**
+- Intune target audience (user- or device-based? AAD group, filter?)
+- Install context: System (classic), User (rare), Available + Required?
+- Minimum OS version, architecture filter
+- Coexistence with previous versions: in-place upgrade, side-by-side, force-uninstall old versions?
+- Conflicting apps: are there competing products that have to go?
+- Roaming profiles / FSLogix / non-persistent VDI?
 
-**Laufzeitverhalten:**
-- Prozesse die geschlossen werden muessen (fuer `AppProcessesToClose` in `$adtSession`)
-- Sichtbare UI waehrend Install (Silent vs. NonInteractive)? 
-- User-Benachrichtigungen gewuenscht (Welcome-Dialog, Defer-Button, Countdown)?
-- Erforderliche Umgebungsvariablen / Registry-Policies
-- Firewall-Regeln / Service-Konten
+**Runtime behavior:**
+- Processes that have to be closed (for `AppProcessesToClose` in `$adtSession`)
+- Visible UI during install (Silent vs. NonInteractive)?
+- User notifications desired (welcome dialog, defer button, countdown)?
+- Required environment variables / registry policies
+- Firewall rules / service accounts
 
-**Konfiguration / Customizing:**
-- Default-Settings die ueberschrieben werden sollen (Startup-Behavior, Telemetrie-Opt-Out, Updater-Abschaltung, Default-Ordner)
-- Registry-Keys / ADMX / XML / JSON zum Injizieren
-- Files-to-Copy in AppData / ProgramData
-- Shortcuts (Desktop, StartMenu) platzieren oder entfernen?
+**Configuration / customizing:**
+- Default settings that should be overridden (startup behavior, telemetry opt-out, updater disablement, default folder)
+- Registry keys / ADMX / XML / JSON to inject
+- Files to copy into AppData / ProgramData
+- Shortcuts (Desktop, Start Menu) to place or remove?
 
 **Detection:**
-- Wie eindeutig nachweisen dass installiert? MSI-ProductCode ist meist genug; bei EXE-Installern oft File-Version + Registry.
-- Zwingend funktionaler Test (z.B. "DB erreichbar", "Service laeuft") oder reicht Presence-Check?
+- How do you prove unambiguously that it is installed? The MSI product code is usually enough; for EXE installers often file version + registry.
+- A mandatory functional test (e.g. "DB reachable", "service running") or is a presence check sufficient?
 
-**Uninstall / Cleanup:**
-- Was MUSS weggeraeumt werden bei Uninstall (User-Daten behalten? Registry-Leichen entfernen?)
-- Was DARF NICHT geloescht werden (Shared-Komponenten, User-Templates)?
-- Soll Uninstall auch Vorversionen killen oder nur die selbst installierte?
+**Uninstall / cleanup:**
+- What MUST be cleaned up on uninstall (keep user data? remove registry leftovers?)
+- What MUST NOT be deleted (shared components, user templates)?
+- Should uninstall also kill previous versions or only the one it installed itself?
 
-**Sicherheit:**
-- Credentials im Installer noetig (Service-Account, API-Key, Cert)? Wie werden die an den Install uebergeben ohne im Log/Filesystem zu landen?
-- PII / GDPR-relevante Konfiguration?
-- Signaturprufung erwartet?
+**Security:**
+- Credentials needed in the installer (service account, API key, cert)? How are they passed to the install without ending up in the log/filesystem?
+- PII / GDPR-relevant configuration?
+- Signature check expected?
 
-Diese Liste als Intake-Formular nehmen; was offen bleibt = Risiko im Deploy.
+Use this list as an intake form; whatever stays open = risk in the deployment.
 
-### 0.3 Web-Recherche zum konkreten Installer
+### 0.3 Web research on the specific installer
 
-Pro App recherchieren - ohne diese Antworten kein erfolgreiches Silent-Install:
+Research per app - without these answers there is no successful silent install:
 
-**Pflicht-Such-Queries (Beispiele):**
+**Mandatory search queries (examples):**
 ```
 "<AppName>" "<Version>" silent install command line
 "<AppName>" msi transform mst enterprise deployment
@@ -116,49 +116,49 @@ Pro App recherchieren - ohne diese Antworten kein erfolgreiches Silent-Install:
 "<AppName>" known issues intune win32
 ```
 
-**Offizielle Quellen immer zuerst:**
-- Hersteller-Admin-Guide / Enterprise-Deployment-Guide (Adobe Admin Console, Autodesk Enterprise, Microsoft Docs, ...)
-- Release-Notes fuer die spezifische Version
-- Knowledge Base / Support Forum des Herstellers
+**Official sources always first:**
+- Vendor admin guide / enterprise deployment guide (Adobe Admin Console, Autodesk Enterprise, Microsoft Docs, ...)
+- Release notes for the specific version
+- Knowledge base / support forum of the vendor
 
-**Community-Quellen (zur Validierung):**
-- `silentinstallhq.com` - Silent-Switches fuer viele Apps
-- `deploymentresearch.com` - Tim Mangans Archiv
+**Community sources (for validation):**
+- `silentinstallhq.com` - silent switches for many apps
+- `deploymentresearch.com` - Tim Mangan's archive
 - PSADT Discourse: https://discourse.psappdeploytoolkit.com/search
-- `/r/SCCM`, `/r/Intune` auf Reddit
-- GitHub: Suche nach `<appname> intune win32` oder `<appname> PSADT`
+- `/r/SCCM`, `/r/Intune` on Reddit
+- GitHub: search for `<appname> intune win32` or `<appname> PSADT`
 
-**Minimal-Ergebnis dokumentieren:**
+**Document the minimal result:**
 
-| Frage | Antwort | Quelle |
+| Question | Answer | Source |
 |---|---|---|
-| Silent-Install-CMD | `<...>` | |
-| Silent-Uninstall-CMD | `<...>` | |
-| Bekannte Exit-Codes (Erfolg, Reboot, Fehler) | `0, 3010, ...` | |
-| Logfile-Pfad des Installers | `<...>` | |
-| Dependency-Installer (wenn separat) | `<...>` | |
-| Bekannte Intune-Stolpersteine | `<...>` | |
-| Known-Post-Install-Config (Registry / XML) | `<...>` | |
+| Silent install CMD | `<...>` | |
+| Silent uninstall CMD | `<...>` | |
+| Known exit codes (success, reboot, error) | `0, 3010, ...` | |
+| Installer log file path | `<...>` | |
+| Dependency installer (if separate) | `<...>` | |
+| Known Intune pitfalls | `<...>` | |
+| Known post-install config (registry / XML) | `<...>` | |
 
-Ohne diese Tabelle ausgefuellt: **nicht packen**.
+Without this table filled in: **do not package**.
 
-**Beispiel (Adobe Acrobat Pro):**
-- Admin-Guide: https://www.adobe.com/devnet-docs/acrobatetk/
-- Customization Wizard (MST bauen): https://www.adobe.com/devnet-docs/acrobatetk/tools/Wizard/index.html
-- Package via Adobe Admin Console (Creative Cloud): offizieller Weg fuer neuere Versionen
+**Example (Adobe Acrobat Pro):**
+- Admin guide: https://www.adobe.com/devnet-docs/acrobatetk/
+- Customization Wizard (build the MST): https://www.adobe.com/devnet-docs/acrobatetk/tools/Wizard/index.html
+- Package via Adobe Admin Console (Creative Cloud): the official path for newer versions
 
-**Beispiel (Oracle Database XE):**
-- Doku: https://docs.oracle.com/en/database/oracle/oracle-database/21/xeinw/
-- Silent-Install: `setup.exe /s /f1"XEInstall.rsp"` + Response-File
-- Bekannter Stolperstein: `svc_oracle` muss VOR Install existieren (deshalb im Script der Service-Account-Create)
+**Example (Oracle Database XE):**
+- Docs: https://docs.oracle.com/en/database/oracle/oracle-database/21/xeinw/
+- Silent install: `setup.exe /s /f1"XEInstall.rsp"` + response file
+- Known pitfall: `svc_oracle` must exist BEFORE install (which is why the script creates the service account)
 
 ---
 
 ## Phase 1: Scaffold via `New-ADTTemplate`
 
-Nicht manuell Ordner anlegen. Der offizielle Cmdlet baut die korrekte Struktur.
+Do not create folders manually. The official cmdlet builds the correct structure.
 
-### 1.1 Modul laden, Scaffold erzeugen
+### 1.1 Load the module, generate the scaffold
 
 ```powershell
 # Einmalig - oder wenn Version veraltet
@@ -168,17 +168,17 @@ Install-Module PSAppDeployToolkit -Scope CurrentUser -Force
 Import-Module PSAppDeployToolkit
 ```
 
-Werte kommen aus dem Intake aus Phase 0.2 - ersetze `<...>` durch die TATSAECHLICHEN Werte der App, die gerade paketiert wird.
+The values come from the intake in Phase 0.2 - replace `<...>` with the ACTUAL values of the app currently being packaged.
 
-**Basic-Scaffold (nur Destination + Name):**
+**Basic scaffold (only destination + name):**
 ```powershell
 New-ADTTemplate -Destination '<Root-Ordner>' -Name '<AppName>'
 # z.B. New-ADTTemplate -Destination 'C:\Temp\PSADTv4' -Name 'FooBar 10'
 ```
 
-Erzeugt `<Root-Ordner>\<AppName>\` mit kompletter v4-Struktur. Standard ist `-Version 4` (aktueller v4-Stil). `-Version 3` gibt das v3-Kompatibilitaets-Template (braucht man 2026 nicht mehr).
+Creates `<Root-Ordner>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
 
-**Extended-Scaffold (vorbefuellt mit App-Metadaten, Werte aus Phase 0.2):**
+**Extended scaffold (pre-populated with app metadata, values from Phase 0.2):**
 ```powershell
 New-ADTTemplate -Destination '<Root-Ordner>' `
     -Name '<AppName>' `
@@ -193,11 +193,11 @@ New-ADTTemplate -Destination '<Root-Ordner>' `
     -AppScriptAuthor '<Vorname Nachname>'
 ```
 
-Die Werte landen direkt als `$adtSession = @{...}` im generierten `Invoke-AppDeployToolkit.ps1`. Weniger manuelles Editieren = weniger Tippfehler.
+The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppDeployToolkit.ps1`. Less manual editing = fewer typos.
 
-> Die `Adobe Acrobat Pro`- und `Oracle XE`-Referenzen weiter unten im Dokument sind ausschliesslich Illustration - bei jedem neuen Paket wird hier die ZU PAKETIERENDE App eingesetzt, nicht Adobe oder Oracle.
+> The `Adobe Acrobat Pro` and `Oracle XE` references further down in this document are illustration only - for every new package the app TO BE PACKAGED is inserted here, not Adobe or Oracle.
 
-### 1.2 Was im Scaffold entsteht
+### 1.2 What the scaffold produces
 
 ```
 <Destination>\<Name>\
@@ -212,7 +212,7 @@ Die Werte landen direkt als `$adtSession = @{...}` im generierten `Invoke-AppDep
   Strings\                             # Lokalisierungs-Overrides (optional)
 ```
 
-### 1.3 Erste Verifizierung des Scaffolds
+### 1.3 First verification of the scaffold
 
 ```powershell
 $pkg = '<Scaffold-Pfad>'   # z.B. 'C:\Temp\PSADTv4\<AppName>'
@@ -222,20 +222,20 @@ $pkg = '<Scaffold-Pfad>'   # z.B. 'C:\Temp\PSADTv4\<AppName>'
 Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersion' -List | Select-Object Line
 ```
 
-Beides muss matchen (typisch `4.1.8`). Wenn divergent -> Modul neu installieren + neu scaffolden.
+Both must match (typically `4.1.8`). If they diverge -> reinstall the module + scaffold again.
 
 ---
 
-## Phase 2: Script-Customizing
+## Phase 2: Script customizing
 
-### 2.1 Installer in `Files\` legen
+### 2.1 Put the installer in `Files\`
 
-Alles was `setup.exe`, `*.msi`, `*.mst`, Response-Files, Runtime-Assets ist, landet unter `<pkg>\Files\`.
-Im Script dann `$adtSession.DirFiles` als Root.
+Everything that is `setup.exe`, `*.msi`, `*.mst`, response files, runtime assets lands under `<pkg>\Files\`.
+In the script then use `$adtSession.DirFiles` as the root.
 
-### 2.2 `$adtSession`-Metadaten finalisieren
+### 2.2 Finalize the `$adtSession` metadata
 
-Im `Invoke-AppDeployToolkit.ps1` den Hashtable pruefen (siehe 0.2 Intake fuer die Werte):
+In `Invoke-AppDeployToolkit.ps1` check the hashtable (see 0.2 Intake for the values):
 
 ```powershell
 $adtSession = @{
@@ -260,11 +260,11 @@ $adtSession = @{
 }
 ```
 
-### 2.3 Install/Uninstall/Repair-Hooks fuellen
+### 2.3 Fill the Install/Uninstall/Repair hooks
 
-Das Scaffold hat drei leere Funktionen: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Jede hat Pre/Install/Post-MARK-Abschnitte.
+The scaffold has three empty functions: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Each has Pre/Install/Post MARK sections.
 
-**Minimal-Pattern fuer MSI:**
+**Minimal pattern for MSI:**
 ```powershell
 function Install-ADTDeployment {
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
@@ -279,16 +279,16 @@ function Install-ADTDeployment {
 }
 ```
 
-**Pattern fuer EXE-Wrapper:**
+**Pattern for an EXE wrapper:**
 ```powershell
 Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList '/silent /allusers=1 /log="C:\Windows\Logs\Software\install.log"' -SuccessExitCodes @(0, 3010, 1641) -WaitForMsiExec
 ```
 
-Immer `-SuccessExitCodes` mitgeben - sonst wirft Start-ADTProcess bei allem != 0.
+Always pass `-SuccessExitCodes` - otherwise Start-ADTProcess throws on anything != 0.
 
-### 2.4 Extensions-Modul fuer Helper-Funktionen
+### 2.4 Extensions module for helper functions
 
-Custom-Helpers gehoeren in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1` - NICHT direkt ins Main-Script. Gruende: Wiederverwendung, saubere Namespaces, Main-Script bleibt lesbar.
+Custom helpers belong in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1` - NOT directly in the main script. Reasons: reuse, clean namespaces, the main script stays readable.
 
 ```powershell
 # PSAppDeployToolkit.Extensions.psm1
@@ -297,17 +297,17 @@ function Disable-AppUpdater    { ... }
 Export-ModuleMember -Function Set-CompanyBranding, Disable-AppUpdater
 ```
 
-Das Main-Script lädt die Extensions automatisch (der Block `Get-ChildItem ... -match 'PSAppDeployToolkit\..+$'` am Ende von `Invoke-AppDeployToolkit.ps1`).
+The main script loads the extensions automatically (the block `Get-ChildItem ... -match 'PSAppDeployToolkit\..+$'` at the end of `Invoke-AppDeployToolkit.ps1`).
 
 ---
 
-## Phase 3: Pre-Flight-Checks
+## Phase 3: Pre-flight checks
 
-Alles aus dieser Phase ausfuehren. Jeder Fehlschlag = NICHT weiter.
+Run everything in this phase. Each failure = DO NOT continue.
 
-### 3.1 Encoding-Check (UTF-8 mit BOM oder ASCII-only)
+### 3.1 Encoding check (UTF-8 with BOM or ASCII-only)
 
-PowerShell 5.1 liest .ps1 ohne BOM als Windows-1252. UTF-8-Multibytes (Em-Dash `—`, Pfeil `→`, Umlaute, typografische Quotes, Ellipsis `…`) zerfallen. In Double-Quoted Strings **schliesst** ein falsch interpretierter Em-Dash den String vorzeitig (UTF-8 `E2 80 94` -> CP1252 `â€"`, letztes Byte = `"`). Parse-Error. Script laeuft NIE. Intune zeigt `0x80070001`, keine lokalen Logs.
+PowerShell 5.1 reads a .ps1 without a BOM as Windows-1252. UTF-8 multibytes (em-dash `—`, arrow `→`, umlauts, typographic quotes, ellipsis `…`) fall apart. In double-quoted strings a misinterpreted em-dash **closes** the string prematurely (UTF-8 `E2 80 94` -> CP1252 `â€"`, last byte = `"`). Parse error. The script NEVER runs. Intune shows `0x80070001`, no local logs.
 
 ```powershell
 $s = '<pfad-zur-ps1>'
@@ -318,9 +318,9 @@ $nonAscii = [regex]::Matches($text, '[^\x00-\x7F]') | ForEach-Object { $_.Value 
 "HasBOM=$hasBom NonAscii=$($nonAscii -join ' ') Count=$(([regex]::Matches($text,'[^\x00-\x7F]')).Count)"
 ```
 
-Akzeptanzkriterium: `HasBOM=True` ODER `Count=0`. Beides = Defense-in-Depth.
+Acceptance criterion: `HasBOM=True` OR `Count=0`. Both = defense in depth.
 
-Fix, wenn nicht:
+Fix, if not:
 ```powershell
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
 $text = $text -replace [char]0x2014, '-'      # em-dash
@@ -334,7 +334,7 @@ $text = $text -replace [char]0x2026, '...'    # ellipsis
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-### 3.2 Parse-Check
+### 3.2 Parse check
 
 ```powershell
 $errs = $null
@@ -342,11 +342,11 @@ $null = [System.Management.Automation.Language.Parser]::ParseFile($s, [ref]$null
 if ($errs) { $errs | Select Message,@{N='L';E={$_.Extent.StartLineNumber}} } else { 'PARSE_OK' }
 ```
 
-WICHTIG: `Parser::ParseFile` detektiert UTF-8-ohne-BOM korrekt und meldet oft `PARSE_OK` obwohl powershell.exe via Launcher trotzdem knallt. Der 3.3-Test ist der ECHTE Gate.
+IMPORTANT: `Parser::ParseFile` detects UTF-8-without-BOM correctly and often reports `PARSE_OK` even though powershell.exe via the launcher still blows up. The 3.3 test is the REAL gate.
 
-### 3.3 Launcher-Simulation (Acid-Test)
+### 3.3 Launcher simulation (acid test)
 
-Der `Invoke-AppDeployToolkit.exe`-Launcher ruft PS5.1 mit `-Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"` auf. Genau das replizieren:
+The `Invoke-AppDeployToolkit.exe` launcher calls PS5.1 with `-Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"`. Replicate exactly that:
 
 ```powershell
 Start-Process powershell.exe -ArgumentList `
@@ -356,13 +356,13 @@ Start-Process powershell.exe -ArgumentList `
 Get-Content stderr.log
 ```
 
-Parse-Errors im stderr trotz gruenem 3.2 = Encoding-Bug, zurueck zu 3.1.
+Parse errors in stderr despite a green 3.2 = encoding bug, back to 3.1.
 
-Bei Scripten die echte Installer anstossen: Install-ADTDeployment-Body stubben (siehe Anhang C).
+For scripts that trigger real installers: stub the Install-ADTDeployment body (see Appendix C).
 
-### 3.4 Param-Block vs. v4-Template
+### 3.4 Param block vs. v4 template
 
-Param-Block im Main-Script muss zu `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1` passen. Stand 4.1.8:
+The param block in the main script must match `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1`. As of 4.1.8:
 
 ```powershell
 [CmdletBinding()]
@@ -375,13 +375,13 @@ param (
 )
 ```
 
-NICHT: `$AllowRebootPassThru` (v3-Denken). Eigene Parameter (z.B. `$DbPassword`) hinten anhaengen, VOR `Open-ADTSession` aus `$iadtParams` entfernen.
+NOT: `$AllowRebootPassThru` (v3 thinking). Append your own parameters (e.g. `$DbPassword`) at the end, and remove them from `$iadtParams` BEFORE `Open-ADTSession`.
 
-### 3.5 v3-Cmdlet-Rueckstaende
+### 3.5 Leftover v3 cmdlets
 
-Verboten im Code:
+Forbidden in the code:
 
-| v3 (weg) | v4 (richtig) |
+| v3 (gone) | v4 (correct) |
 |---|---|
 | `Execute-Process` | `Start-ADTProcess` |
 | `Execute-MSI` | `Start-ADTMsiProcess` |
@@ -405,9 +405,9 @@ $t = [System.IO.File]::ReadAllText($s)
 foreach ($fn in $v3) { $m = [regex]::Matches($t, "\b$fn\b"); if ($m.Count) { "V3_FOUND: $fn ($($m.Count)x)" } }
 ```
 
-### 3.6 Top-Level-Statements ausserhalb try/catch
+### 3.6 Top-level statements outside try/catch
 
-Alles was NICHT in einem try/catch ist und wirft = exit 1 = kein Log. Top-Level erlaubt nur Attribute, Param-Block, simple `$var = @{...}`, Preference-Variablen, `Set-StrictMode`, `try/catch`.
+Anything that is NOT inside a try/catch and throws = exit 1 = no log. At top level only the following are allowed: attributes, the param block, simple `$var = @{...}`, preference variables, `Set-StrictMode`, `try/catch`.
 
 ```powershell
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($s, [ref]$null, [ref]$null)
@@ -415,17 +415,17 @@ $ast.EndBlock.Statements | Where-Object { $_ -isnot [System.Management.Automatio
     ForEach-Object { "L$($_.Extent.StartLineNumber): $($_.GetType().Name)" }
 ```
 
-Alles was kein `AssignmentStatementAst` / `PipelineAst` (fuer Set-StrictMode) / `TryStatementAst` ist = pruefen.
+Anything that is not an `AssignmentStatementAst` / `PipelineAst` (for Set-StrictMode) / `TryStatementAst` = check it.
 
 ---
 
-## Phase 4: .intunewin bauen
+## Phase 4: Build the .intunewin
 
-### 4.1 IntuneWinAppUtil holen
+### 4.1 Get IntuneWinAppUtil
 
-Microsoft's offizielles Packaging-Tool. Immer die aktuelle Version:
+Microsoft's official packaging tool. Always the current version:
 - GitHub: https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool
-- Direct-Download (releases/latest): `https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest`
+- Direct download (releases/latest): `https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest`
 
 ```powershell
 $tool = 'C:\Tools\IntuneWinAppUtil.exe'
@@ -438,7 +438,7 @@ if (-not (Test-Path $tool)) {
 & $tool -v
 ```
 
-### 4.2 Packen
+### 4.2 Package
 
 ```powershell
 $src = '<Paketordner aus Phase 1>'                  # z.B. 'C:\Temp\PSADTv4\<AppName>'
@@ -449,201 +449,201 @@ New-Item $out -ItemType Directory -Force | Out-Null
 & $tool -c $src -s $setupFile -o $out -q
 ```
 
-Parameter:
-- `-c <srcDir>` - der Paketordner mit .exe + .ps1 + PSAppDeployToolkit + Files
-- `-s <setupFile>` - relativer Pfad (zu `-c`) zur Entry-.exe. IMMER `Invoke-AppDeployToolkit.exe`, **nicht** `.ps1` (Launcher braucht WDAC-Kompatibilitaet und 64-bit-PS-Bootstrap)
-- `-o <outDir>` - Ausgabeordner fuer die .intunewin - **nicht** in `-c` rein, sonst packt ein Rebuild die alte .intunewin mit ein (nested, doppelter Speicher)
-- `-q` - quiet, keine Eingabe-Prompts
-- `-a <catalogFolder>` - optional, Katalogdateien fuer WDAC-signierte Umgebungen
-- `-e` - verschluesselungs-Output-Info (interessant fuer Tooling, nicht fuer Intune)
+Parameters:
+- `-c <srcDir>` - the package folder with .exe + .ps1 + PSAppDeployToolkit + Files
+- `-s <setupFile>` - relative path (to `-c`) to the entry .exe. ALWAYS `Invoke-AppDeployToolkit.exe`, **not** `.ps1` (the launcher needs WDAC compatibility and a 64-bit PS bootstrap)
+- `-o <outDir>` - output folder for the .intunewin - **not** inside `-c`, otherwise a rebuild packs the old .intunewin in too (nested, double storage)
+- `-q` - quiet, no input prompts
+- `-a <catalogFolder>` - optional, catalog files for WDAC-signed environments
+- `-e` - encryption output info (interesting for tooling, not for Intune)
 
-Ergebnis-Plausibilitaet:
+Result plausibility:
 ```powershell
 $iw = Get-ChildItem "$out\*.intunewin" | Select-Object -First 1
 "Size: $([Math]::Round($iw.Length / 1MB, 1)) MB"
 "Approx Files/-Size: $([Math]::Round(((Get-ChildItem "$src\Files" -Recurse -File | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)) MB"
 ```
 
-Drastisch groesser als Files + 20-50 MB Toolkit = nested .intunewin, `-o` war im `-c`, neu packen mit externem Output.
+Drastically larger than Files + 20-50 MB toolkit = nested .intunewin, `-o` was inside `-c`, repackage with an external output.
 
-### 4.3 Entpackbarkeit pruefen (offline)
+### 4.3 Check extractability (offline)
 
-Die .intunewin ist eine AES-verschluesselte ZIP. Ohne Intune nicht entpackbar, aber das Outer-ZIP hat eine Metadata-XML die unverschluesselt zugaenglich ist:
+The .intunewin is an AES-encrypted ZIP. Not extractable without Intune, but the outer ZIP has a metadata XML that is accessible unencrypted:
 
 ```powershell
 Expand-Archive -Path $iw.FullName -DestinationPath "$env:TEMP\iw-inspect" -Force
 Get-Content "$env:TEMP\iw-inspect\IntuneWinPackage\Metadata\Detection.xml"
 ```
 
-Die XML muss `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>` enthalten. Wenn da was anderes steht: falscher `-s` beim Packen.
+The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If something else is there: wrong `-s` during packaging.
 
 ---
 
-## Phase 5: Intune-App-Konfiguration
+## Phase 5: Intune app configuration
 
 ### 5.1 App Information
-- Name / Version / Publisher: matched zu `$adtSession.AppName / AppVersion / AppVendor`
-- Description: Markdown-faehig, erster Absatz standalone lesbar (~200 Zeichen sind die Kurzvorschau im Company Portal)
-- Category: semantisch korrekt waehlen (Development, Productivity, ...)
+- Name / Version / Publisher: matches `$adtSession.AppName / AppVersion / AppVendor`
+- Description: Markdown-capable, the first paragraph readable standalone (~200 characters are the short preview in the Company Portal)
+- Category: choose it semantically correct (Development, Productivity, ...)
 - Logo: `<pkg>\Assets\AppIcon.png`, 256x256 PNG transparent
 
 ### 5.2 Program
 - **Install command**: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`
-- **Uninstall command**: `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` (Case egal, ValidateSet ist case-insensitive)
-- **Install behavior**: `System` (Default; SYSTEM-Context ist richtig fuer Win32-Apps)
-- **Device restart behavior**: 
-  - `App install may force a device restart` - wenn Installer 1641 liefern kann
-  - `Determine behavior based on return codes` - default, greift auf Return-Codes-Mapping zurueck
-- **Allow available uninstall**: Yes (erlaubt User Uninstall ueber Company Portal)
+- **Uninstall command**: `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` (case does not matter, the ValidateSet is case-insensitive)
+- **Install behavior**: `System` (default; the SYSTEM context is correct for Win32 apps)
+- **Device restart behavior**:
+  - `App install may force a device restart` - when the installer can return 1641
+  - `Determine behavior based on return codes` - default, falls back to the return-code mapping
+- **Allow available uninstall**: Yes (lets the user uninstall via the Company Portal)
 
-### 5.3 Return codes (kritisch, nie auslassen)
+### 5.3 Return codes (critical, never omit)
 
-Pflicht-Mapping, sonst zeigt Intune unbekannte Exit-Codes als `0x80070000 + code`:
+Mandatory mapping, otherwise Intune shows unknown exit codes as `0x80070000 + code`:
 
-| Code | Type | Grund |
+| Code | Type | Reason |
 |---:|---|---|
 | 0 | Success | OK |
-| 1707 | Success | MSI-Success-Alternative |
-| 3010 | Soft reboot | Reboot empfohlen |
-| 1641 | Hard reboot | Reboot erzwungen |
-| 1618 | Retry | Parallele MSI laeuft |
-| 60001 | **Failed** | PSADT Unhandled Script Error |
-| 60008 | **Failed** | PSADT Init fehlgeschlagen (Module Import / Open-ADTSession) |
+| 1707 | Success | MSI success alternative |
+| 3010 | Soft reboot | Reboot recommended |
+| 1641 | Hard reboot | Reboot enforced |
+| 1618 | Retry | A parallel MSI is running |
+| 60001 | **Failed** | PSADT unhandled script error |
+| 60008 | **Failed** | PSADT init failed (module import / Open-ADTSession) |
 
-Zusaetzlich die installer-spezifischen Codes aus 0.3 eintragen.
+Additionally enter the installer-specific codes from 0.3.
 
 ### 5.4 Requirements
-- **OS architecture**: `x64` wenn Script `AppArch='x64'`, sonst entsprechend
-- **Minimum OS**: realistisch (Win11 22H2, Win10 22H2) - nicht `1607`, das ist Legacy-Offenlassen
-- **Disk space**: wenn Installer viel braucht - spart Zeit bei kleinen Platten
-- **Physical memory**: nur bei echt speicherhungrigen Installern
-- **Additional requirement rules**: Registry / File / Script - fuer alles was ueber Standardrequirements hinausgeht (z.B. Domain-Join-Pruefung, spezifische Build-Nummer)
+- **OS architecture**: `x64` when the script has `AppArch='x64'`, otherwise accordingly
+- **Minimum OS**: realistic (Win11 22H2, Win10 22H2) - not `1607`, that is leaving it open to legacy
+- **Disk space**: when the installer needs a lot - saves time on small disks
+- **Physical memory**: only for genuinely memory-hungry installers
+- **Additional requirement rules**: Registry / File / Script - for everything that goes beyond the standard requirements (e.g. domain-join check, specific build number)
 
 ### 5.5 Detection rules
 
-Drei Optionen, Reihenfolge der Robustheit:
+Three options, ordered by robustness:
 
-1. **Custom Detection Script** (bevorzugt fuer komplexe Installs):
-   - Contract: `exit 0 + stdout non-empty` = installed; `exit 0 + stdout empty` = not installed; `exit != 0` = Detection-Error, Retry
-   - Meist: `Enforce script signature check = No` (ausser in streng signierter Umgebung)
-   - Meist: `Run as 32-bit on 64-bit = No` (sonst falscher Registry-View)
+1. **Custom detection script** (preferred for complex installs):
+   - Contract: `exit 0 + stdout non-empty` = installed; `exit 0 + stdout empty` = not installed; `exit != 0` = detection error, retry
+   - Usually: `Enforce script signature check = No` (except in a strictly signed environment)
+   - Usually: `Run as 32-bit on 64-bit = No` (otherwise the wrong registry view)
 
-2. **MSI Product Code**: fuer reine MSI-Installer die ihren ProductCode stabil halten
+2. **MSI Product Code**: for pure MSI installers that keep their product code stable
 
-3. **File / Registry / Version**: fuer einfache Faelle - EIN Kriterium, nicht mehrere gemischt
+3. **File / Registry / Version**: for simple cases - ONE criterion, not several mixed
 
-**Pflicht**: Detection-Methode ist **eindeutig** - nicht Custom-Script PLUS File-Rule; das gibt widerspruechliche Antworten.
+**Mandatory**: the detection method is **unambiguous** - not a custom script PLUS a file rule; that gives contradictory answers.
 
 ### 5.6 Install time required
-- Default 60 min reicht fuer die meisten Installer
-- Nur wenn dokumentiert >45 min, hochziehen
-- Nicht reflexartig 120 min ("mehr ist besser" stimmt hier nicht - Intune behaelt den Prozess dann extrem lang am Leben)
+- The default of 60 min is enough for most installers
+- Only when documented >45 min, raise it
+- Don't reflexively set 120 min ("more is better" is not true here - Intune then keeps the process alive extremely long)
 
 ### 5.7 Assignments
-- `Required` fuer Pflicht-Rollout auf Device- oder User-Gruppe
-- `Available for enrolled devices` fuer Self-Service via Company Portal
-- `Uninstall` als Pseudo-Assignment um Apps gezielt wieder zu entfernen
-- **Filter** verwenden fuer dynamische Einschraenkungen (OS-Version, Device-Name-Regex, AzureAD-Join-Type)
-- **Delivery Optimization**: fuer grosse Pakete Peer-to-Peer aktivieren
-- **Dependencies / Supersedence**: wenn die App andere PSADT-Pakete voraussetzt oder Vorversionen ersetzt
-- **App availability / Deadline / Grace period**: fuer Required-Apps mit Reboot-Auswirkung
+- `Required` for a mandatory rollout to a device or user group
+- `Available for enrolled devices` for self-service via the Company Portal
+- `Uninstall` as a pseudo-assignment to deliberately remove apps again
+- **Filter** to use for dynamic constraints (OS version, device-name regex, AzureAD join type)
+- **Delivery Optimization**: enable peer-to-peer for large packages
+- **Dependencies / Supersedence**: when the app requires other PSADT packages or replaces previous versions
+- **App availability / Deadline / Grace period**: for required apps with a reboot impact
 
 ---
 
-## Phase 6: Test-Sequenz
+## Phase 6: Test sequence
 
-In dieser Reihenfolge auf DEV-VM (nicht Prod).
+In this order on a DEV VM (not prod).
 
-### 6.1 Direct-Invoke (Smoke-Test)
+### 6.1 Direct invoke (smoke test)
 ```powershell
 .\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent
 ```
-Laeuft durch = Script-Logik OK.
-Laeuft nicht durch = dein Code-Bug, nicht Intune-Problem.
+Runs through = script logic OK.
+Does not run through = your code bug, not an Intune problem.
 
-### 6.2 Launcher-Invoke (Acid-Test)
+### 6.2 Launcher invoke (acid test)
 ```powershell
 .\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 ```
-Laeuft durch = Encoding / Param-Block-Sync OK.
-Laeuft nicht durch aber 6.1 ja = siehe 3.1 (Encoding), 3.4 (Params), 3.6 (Top-Level-Throws).
+Runs through = encoding / param-block sync OK.
+Does not run through but 6.1 does = see 3.1 (encoding), 3.4 (params), 3.6 (top-level throws).
 
-### 6.3 SYSTEM-Context (IME-Realitaet)
+### 6.3 SYSTEM context (IME reality)
 ```cmd
 psexec -s -accepteula cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"
 ```
 PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec
-Laeuft durch = keine User-Session-Abhaengigkeit. Dieser Test muss gruen sein BEVOR Upload.
+Runs through = no dependency on a user session. This test must be green BEFORE upload.
 
-### 6.4 Testgruppen-Deploy
-Dedizierte Intune-Testgruppe mit 1 VM. Deployment beobachten:
-- `C:\Windows\Logs\Software\*PSAppDeployToolkit_Install.log` muss existieren + `Close-ADTSession` mit Exit 0 drin
-- `AppWorkload.log` zeigt `Status: Installed`
-- Detection-Script liefert `exit 0 + stdout non-empty`
+### 6.4 Test-group deploy
+A dedicated Intune test group with 1 VM. Observe the deployment:
+- `C:\Windows\Logs\Software\*PSAppDeployToolkit_Install.log` must exist + contain `Close-ADTSession` with Exit 0
+- `AppWorkload.log` shows `Status: Installed`
+- the detection script returns `exit 0 + stdout non-empty`
 
-Erst nach Erfolg: Production-Rollout.
+Only after success: production rollout.
 
 ---
 
 ## Phase 7: Rollout
 
-### 7.1 Staged Rollout
-- Pilot-Gruppe (10-50 Geraete) fuer 24-48h laufen lassen
-- Monitoring: Intune Admin Center -> Apps -> Oracle (Bsp.) -> Device install status
-- Bei >5% Fehlerrate: Rollout pausieren, Ursache klaeren
+### 7.1 Staged rollout
+- Run a pilot group (10-50 devices) for 24-48h
+- Monitoring: Intune Admin Center -> Apps -> Oracle (example) -> Device install status
+- At >5% failure rate: pause the rollout, find the cause
 
 ### 7.2 Production
-- Erweitern der Zielgruppen nach Pilot-Success
-- Company-Portal-Beschreibung + Support-Hinweise pruefen
-- Known-Issues in interne Wissensbasis
+- Expand the target audiences after pilot success
+- Review the Company Portal description + support notes
+- Known issues into the internal knowledge base
 
 ### 7.3 Ongoing
-- GitHub-Release-Feed abonnieren (Releases -> Watch -> Releases only) um PSADT-Updates nicht zu verschlafen
-- Pruefen bei jedem neuen Paket: ist das Modul im Scaffold noch aktuell (Phase 0.1)
+- Subscribe to the GitHub release feed (Releases -> Watch -> Releases only) so you don't miss PSADT updates
+- Check with every new package: is the module in the scaffold still up to date (Phase 0.1)
 
 ---
 
-## Anhang A: Error-Referenz
+## Appendix A: Error reference
 
-### A.1 Intune-HRESULT-Mapping
+### A.1 Intune HRESULT mapping
 
-Intune rechnet unbekannte positive Exit-Codes in HRESULT um: `0x80070000 + exitcode`.
+Intune converts unknown positive exit codes into an HRESULT: `0x80070000 + exitcode`.
 
-| Intune zeigt | Tatsaechlicher Exit | Bedeutung |
+| Intune shows | Actual exit | Meaning |
 |---|---:|---|
-| `0x80070001` | 1 | **Script ist gar nicht gelaufen** (Parse-Error, Param-Binding, Top-Level-Throw) |
-| `0x80070002` | 2 | FILE_NOT_FOUND, oft: Launcher findet .ps1 nicht |
-| `0x8000EA61` | 60001 | PSADT Unhandled Script Error |
-| `0x8000EA68` | 60008 | PSADT Init / Module-Load fehlgeschlagen |
-| `0x8007064B` | 1611 | MSI Component qualifier not present |
+| `0x80070001` | 1 | **The script did not run at all** (parse error, param binding, top-level throw) |
+| `0x80070002` | 2 | FILE_NOT_FOUND, often: the launcher cannot find the .ps1 |
+| `0x8000EA61` | 60001 | PSADT unhandled script error |
+| `0x8000EA68` | 60008 | PSADT init / module load failed |
+| `0x8007064B` | 1611 | MSI component qualifier not present |
 | `0x80070642` | 1602 | User cancelled |
 | `0x80070652` | 1618 | Another install in progress |
 | `0x0` | 0 | Success |
 
-### A.2 Typische Root-Causes nach Symptom
+### A.2 Typical root causes by symptom
 
-**0x80070001 + keine lokalen PSADT-Logs:**
-1. Script-Encoding (Em-Dash in Double-Quote-String, UTF-8 ohne BOM) -> Parse-Error
-2. Top-Level-Code ausserhalb try/catch throwt
-3. Param-Block akzeptiert nicht was Launcher uebergibt
+**0x80070001 + no local PSADT logs:**
+1. Script encoding (em-dash in a double-quoted string, UTF-8 without BOM) -> parse error
+2. Top-level code outside try/catch throws
+3. The param block does not accept what the launcher passes
 -> 3.1, 3.4, 3.6
 
-**0x8000EA68 (60008) + PSADT-Log vorhanden, aber leer nach Init:**
-1. Import-Module-Fehler (Version-Mismatch, Path kaputt)
-2. Open-ADTSession wirft (Config ungueltig, Admin-Check failed)
-3. Typdaten-Kollision (`System.Security.AccessControl`) - Symptom `"AuditToString" ist bereits vorhanden`. IME laeuft als SYSTEM mit Machine-Scope PSModulePath (sauber), daher selten in Intune-Deploy - eher in Interactive-Tests. Workaround: `$env:PSModulePath` um PS7-Pfade bereinigen.
+**0x8000EA68 (60008) + PSADT log present, but empty after init:**
+1. Import-Module error (version mismatch, broken path)
+2. Open-ADTSession throws (invalid config, admin check failed)
+3. Type-data collision (`System.Security.AccessControl`) - symptom `"AuditToString" ist bereits vorhanden`. The IME runs as SYSTEM with a machine-scope PSModulePath (clean), so it's rare in an Intune deploy - more likely in interactive tests. Workaround: clean PS7 paths out of `$env:PSModulePath`.
 
-**0x8000EA61 (60001) + PSADT-Log mit Stacktrace:**
-1. Runtime-Fehler in Install-ADTDeployment
-2. External-Command scheitert
--> Log selbst hat den Stack, direkt lesbar
+**0x8000EA61 (60001) + PSADT log with a stack trace:**
+1. Runtime error in Install-ADTDeployment
+2. An external command fails
+-> the log itself has the stack, directly readable
 
-**App haengt auf "Installing" in Company Portal:**
-1. Script laeuft noch (Prozess-ID, Scheduled-Task-State checken)
-2. Script abgestuerzt, IME-Callback nicht geschrieben
-3. GRS-Cache im Weg
+**App stuck on "Installing" in the Company Portal:**
+1. The script is still running (check the process ID, scheduled-task state)
+2. The script crashed, the IME callback was not written
+3. The GRS cache is in the way
 
-Aufraeum-Sequenz (Vorsicht, erst pruefen):
+Cleanup sequence (caution, check first):
 ```powershell
 Get-Process | Where-Object { $_.ProcessName -match 'Invoke-AppDeployToolkit|setup|msiexec|dbca|sqlplus' } | Select Id,ProcessName,StartTime
 Get-ScheduledTask -TaskName 'PSADT_*' -ErrorAction SilentlyContinue | Select TaskName,State
@@ -654,48 +654,48 @@ Remove-Item 'HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps\<UserS
 Start-Service IntuneManagementExtension
 ```
 
-### A.3 Log-Fundorte
+### A.3 Log locations
 
-| Log | Zweck |
+| Log | Purpose |
 |---|---|
-| `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` | PSADT-Session (nach erfolgreichem Init) |
-| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AppWorkload.log` | **Wahrheit** zu Exit-Codes + Install-Commands |
-| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log` | IME-Service-State |
-| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AgentExecutor.log` | Detection-Script-Runs |
-| `C:\Windows\IMECache\<AppId>_<Version>\` | Entpacktes Paket (nur waehrend Install) |
-| `C:\Program Files (x86)\Microsoft Intune Management Extension\Content\Incoming\` | .intunewin-Download (vor Extract) |
+| `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` | PSADT session (after a successful init) |
+| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AppWorkload.log` | **The truth** about exit codes + install commands |
+| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log` | IME service state |
+| `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AgentExecutor.log` | Detection-script runs |
+| `C:\Windows\IMECache\<AppId>_<Version>\` | Extracted package (only during install) |
+| `C:\Program Files (x86)\Microsoft Intune Management Extension\Content\Incoming\` | .intunewin download (before extract) |
 
-AppWorkload.log-Sequenz:
-- `Content cache miss for app (id = ..., name = ...)` - Download startet
-- `Downloading app ... via DO, bytes N/M` - Progress
-- `SetCurrentDirectory: C:\WINDOWS\IMECache\...` - Extract done
-- `Calling CreateProcessAsUser: '...Invoke-AppDeployToolkit.exe...'` - Echter Start
-- `lpExitCode N` - Exit-Code
-- `Admin did NOT set mapping for lpExitCode: N` - Code war nicht in Return-Codes
-- `EnforcementErrorCode: -<huge>` - HRESULT als signed int
-
----
-
-## Anhang B: Anti-Pattern-Liste
-
-1. **Em-Dash/Smart-Quote in Double-Quoted Strings**. `"Repair failed — DB status [$status]."` killt das ganze Script.
-2. **UTF-8 ohne BOM + Sonderzeichen**. BOM schreiben oder reines ASCII.
-3. **v3-Cmdlet-Namen** (siehe 3.5).
-4. **Top-Level-Code ausserhalb try/catch**.
-5. **Single-Check ohne Retry fuer async State** (Services nach msiexec brauchen 30-60s; Fallback-Loesch-Aktionen nicht bei erster negativer Antwort triggern).
-6. **Intune Return Codes nur Default**. 60001 + 60008 als Failed eintragen.
-7. **Install time reflexartig hochsetzen**. 60 min ist fast immer richtig.
-8. **Denken "Laeuft lokal = laeuft in Intune"**. Acid-Test ist 6.2 + 6.3.
-9. **Detection gemischt** (Custom-Script + File-Rule parallel).
-10. **Extensions im Main-Script statt in `PSAppDeployToolkit.Extensions`**.
-11. **-o ins -c beim IntuneWinAppUtil** - nested .intunewin.
-12. **Kein Stakeholder-Intake (Phase 0.2)** - haeufigster Grund fuer "Installer macht nicht was ich will" nach 2 Wochen.
+AppWorkload.log sequence:
+- `Content cache miss for app (id = ..., name = ...)` - download starts
+- `Downloading app ... via DO, bytes N/M` - progress
+- `SetCurrentDirectory: C:\WINDOWS\IMECache\...` - extract done
+- `Calling CreateProcessAsUser: '...Invoke-AppDeployToolkit.exe...'` - the real start
+- `lpExitCode N` - exit code
+- `Admin did NOT set mapping for lpExitCode: N` - the code was not in the return codes
+- `EnforcementErrorCode: -<huge>` - HRESULT as a signed int
 
 ---
 
-## Anhang C: Test-Stub-Muster
+## Appendix B: Anti-pattern list
 
-Vor Launcher-Test auf DEV-Box, wenn Install-Aktion zu gross/teuer:
+1. **Em-dash/smart quote in double-quoted strings**. `"Repair failed — DB status [$status]."` kills the entire script.
+2. **UTF-8 without BOM + special characters**. Write a BOM or stick to pure ASCII.
+3. **v3 cmdlet names** (see 3.5).
+4. **Top-level code outside try/catch**.
+5. **Single check without retry for async state** (services after msiexec need 30-60s; do not trigger fallback delete actions on the first negative answer).
+6. **Intune return codes left at default only**. Enter 60001 + 60008 as Failed.
+7. **Reflexively bumping the install time**. 60 min is almost always right.
+8. **Thinking "runs locally = runs in Intune"**. The acid test is 6.2 + 6.3.
+9. **Mixed detection** (custom script + file rule in parallel).
+10. **Extensions in the main script instead of in `PSAppDeployToolkit.Extensions`**.
+11. **-o inside -c with IntuneWinAppUtil** - nested .intunewin.
+12. **No stakeholder intake (Phase 0.2)** - the most common reason for "the installer doesn't do what I want" after 2 weeks.
+
+---
+
+## Appendix C: Test stub pattern
+
+Before the launcher test on a DEV box, when the install action is too big/expensive:
 
 ```powershell
 $orig = '<pfad-zur-ps1>'
@@ -712,28 +712,28 @@ Start-Process powershell.exe -ArgumentList `
 Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 ```
 
-- Exit 77 + Stub-Log = Init + Session-Open OK, Bug sitzt in Install-ADTDeployment
-- Exit 1 = Parse/Encoding-Bug, siehe 3.1
-- Exit 60008 = Import-Module / Open-ADTSession Bug, siehe A.2
+- Exit 77 + stub log = init + session open OK, the bug sits in Install-ADTDeployment
+- Exit 1 = parse/encoding bug, see 3.1
+- Exit 60008 = Import-Module / Open-ADTSession bug, see A.2
 
 ---
 
-## Anhang D: Ressourcen
+## Appendix D: Resources
 
-### Offizielles PSADT
-- Hauptseite + Docs: https://psappdeploytoolkit.com/docs
-- Latest Release: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest
-- Release Notes: https://psappdeploytoolkit.com/docs/getting-started/release-notes
+### Official PSADT
+- Main site + docs: https://psappdeploytoolkit.com/docs
+- Latest release: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest
+- Release notes: https://psappdeploytoolkit.com/docs/getting-started/release-notes
 - Download: https://psappdeploytoolkit.com/docs/getting-started/download
 - Creating a New Deployment: https://psappdeploytoolkit.com/docs/getting-started/creating-a-new-deployment
-- Reference (alle Cmdlets): https://psappdeploytoolkit.com/docs/reference
+- Reference (all cmdlets): https://psappdeploytoolkit.com/docs/reference
 - New-ADTTemplate: https://psappdeploytoolkit.com/docs/reference/functions/New-ADTTemplate
 - Exit Codes: https://psappdeploytoolkit.com/docs/reference/exit-codes
 - Migration v3 -> v4: https://psappdeploytoolkit.com/docs/migration/migrate-from-v3
 - Blog: https://psappdeploytoolkit.com/blog
 - Community Forum: https://discourse.psappdeploytoolkit.com
 - GitHub: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit
-- Launcher-Source: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/tree/main/src/PSADT.Invoke
+- Launcher source: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/tree/main/src/PSADT.Invoke
 
 ### Microsoft
 - Intune Win32 App Docs: https://learn.microsoft.com/en-us/mem/intune/apps/apps-win32-app-management
@@ -741,19 +741,19 @@ Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 - IntuneWinAppUtil Releases: https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest
 - Intune Troubleshooting: https://learn.microsoft.com/en-us/mem/intune/apps/troubleshoot-app-install
 - Company Portal Docs: https://learn.microsoft.com/en-us/mem/intune/apps/company-portal-app
-- PowerShell 5.1 UTF-8-No-BOM-Bug: https://learn.microsoft.com/en-us/answers/questions/3850223/powershell-5-1-parser-bug-failure-to-parse-utf-8
+- PowerShell 5.1 UTF-8-No-BOM bug: https://learn.microsoft.com/en-us/answers/questions/3850223/powershell-5-1-parser-bug-failure-to-parse-utf-8
 - PowerShell File Encoding: https://learn.microsoft.com/en-us/powershell/scripting/dev-cross-plat/vscode/understanding-file-encoding
 - about_Character_Encoding: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding
 - PsExec (SysInternals): https://learn.microsoft.com/en-us/sysinternals/downloads/psexec
 
-### Silent-Install-Recherche
-- silentinstallhq.com - Switch-Sammlung
-- deploymentresearch.com - Tim Mangan Archiv
+### Silent-install research
+- silentinstallhq.com - switch collection
+- deploymentresearch.com - Tim Mangan archive
 - PSADT Discourse Search: https://discourse.psappdeploytoolkit.com/search
 - Reddit r/Intune: https://www.reddit.com/r/Intune/
 - Reddit r/SCCM: https://www.reddit.com/r/SCCM/
 
-### Drittdocs Error-Codes
+### Third-party error-code docs
 - Scappman Error Reference: https://support.scappman.com/support/error-code-reference
 - xoap PSADT Exit Codes: https://docs.xoap.io/application-management/psadt/exit-codes
 - netECM PSADT Exit Codes: https://docs.netecm.ch/launcher/troubleshooting/ps-app-deploy-toolkit-setup-exit-codes.html
@@ -762,7 +762,7 @@ Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 
 ---
 
-## Anhang E: Finale Deploy-Checkliste
+## Appendix E: Final deploy checklist
 
 ```
 Phase 0 - Recherche + Intake
@@ -815,35 +815,37 @@ Phase 7 - Rollout
 [ ] 7.3  GitHub-Release-Watch abonniert
 ```
 
-Erst wenn ALLE Zeilen gruen: Production-Rollout.
+Only when ALL lines are green: production rollout.
 
 ---
 
-## Anhang F: Intune-Deployment-Dossier (Upload-Template, pro App auszufuellen)
+## Appendix F: Intune deployment dossier (upload template, to be filled in per app)
 
-Dieses Template als Markdown-Datei pro App neben das `.intunewin` legen (z.B. `<AppName>-IntuneDossier.md`). Ohne ausgefuelltes Dossier: **kein Upload**. Werte kommen aus Phase 0.2/0.3.
+Place this template as a Markdown file per app next to the `.intunewin` (e.g. `<AppName>-IntuneDossier.md`). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
 
 ### F.1 App information
 
-| Intune-Feld | Wert | Hinweise |
+| Intune field | Value | Notes |
 |---|---|---|
-| **Name** | `<AppName> <Version>` | exakt wie im Company Portal sichtbar; Version inkl. Build falls Updates |
-| **Description** | siehe F.2 (Markdown-Block) | erste ~200 Zeichen sind Kurzvorschau im CP |
-| **Publisher** | `<Hersteller>` | aus Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
-| **App version** | `<Major.Minor.Build.Rev>` | exakt Dateiversion |
-| **Category** | z.B. Business, Development, Productivity, Communication | fuer CP-Navigation |
-| **Show this as a featured app in the Company Portal** | Yes/No | Yes nur fuer empfohlene Self-Service-Apps |
-| **Information URL** | `<hersteller-produktseite>` | offizielle Produkt-Homepage |
-| **Privacy URL** | `<hersteller-privacy-url>` | oft `/legal/privacy/` des Herstellers |
-| **Developer** | `<Hersteller-Kurzname>` | meist == Publisher |
-| **Owner** | `<internes-Team>` | interner Service-Owner (z.B. "Workplace-Services") |
-| **Notes** | `PSADT 4.1.8 v<N> - pkg rev <NN> - YYYY-MM-DD` | Paket-Metadaten fuer spaetere Troubleshootings |
+| **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
+| **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
+| **Publisher** | `<Hersteller>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
+| **App version** | `<Major.Minor.Build.Rev>` | exact file version |
+| **Category** | e.g. Business, Development, Productivity, Communication | for CP navigation |
+| **Show this as a featured app in the Company Portal** | Yes/No | Yes only for recommended self-service apps |
+| **Information URL** | `<hersteller-produktseite>` | official product homepage |
+| **Privacy URL** | `<hersteller-privacy-url>` | often the vendor's `/legal/privacy/` |
+| **Developer** | `<Hersteller-Kurzname>` | usually == Publisher |
+| **Owner** | `<internes-Team>` | internal service owner (e.g. "Workplace-Services") |
+| **Notes** | `PSADT 4.1.8 v<N> - pkg rev <NN> - YYYY-MM-DD` | package metadata for later troubleshooting |
 | **Logo** | `<pkg>\Assets\AppIcon.png` | 256x256 PNG transparent |
-| **Role scope tags** | `<Default>` oder custom | nur bei delegierter Admin-Rollenstruktur |
+| **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
-### F.2 Description-Markdown-Template (Company Portal)
+### F.2 Description Markdown template (Company Portal)
 
-Intune rendert Markdown im Company Portal. Block 1:1 kopieren, `<...>` ersetzen.
+Intune renders Markdown in the Company Portal. Copy the block 1:1, replace `<...>`.
+
+(end-user output — language.dossier, default German)
 
 ```markdown
 **<AppName>** ist <Ein-Satz-Zweck>.
@@ -877,22 +879,22 @@ Intune rendert Markdown im Company Portal. Block 1:1 kopieren, `<...>` ersetzen.
 Bei Problemen bitte ein Ticket beim **IT-Service-Desk** eroeffnen und - wenn moeglich - die Logdateien unter `C:\Windows\Logs\Software\` anhaengen.
 ```
 
-Pruefen: erster Absatz muss auch allein lesbar sein (200-Zeichen-Kurzvorschau).
+Check: the first paragraph must also be readable on its own (200-character short preview).
 
 ### F.3 Program
 
-| Intune-Feld | Wert |
+| Intune field | Value |
 |---|---|
 | **Install command** | `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` |
-| **Install script** | - (nicht verwenden, Command reicht) |
+| **Install script** | - (do not use, the command is enough) |
 | **Uninstall command** | `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` |
 | **Uninstall script** | - |
-| **Installation time required (mins)** | Default 60; nur wenn >45 min dokumentiert hochziehen |
-| **Allow available uninstall** | Yes (User darf via CP deinstallieren) |
+| **Installation time required (mins)** | Default 60; only raise if >45 min documented |
+| **Allow available uninstall** | Yes (the user may uninstall via the CP) |
 | **Install behavior** | **System** |
-| **Device restart behavior** | `Determine behavior based on return codes` (Default) ODER `App install may force a device restart` wenn Installer 1641 liefern kann |
+| **Device restart behavior** | `Determine behavior based on return codes` (default) OR `App install may force a device restart` when the installer can return 1641 |
 
-### F.4 Return codes (Pflicht-Tabelle, exakt uebernehmen)
+### F.4 Return codes (mandatory table, copy exactly)
 
 | Code | Type |
 |---:|---|
@@ -906,112 +908,112 @@ Pruefen: erster Absatz muss auch allein lesbar sein (200-Zeichen-Kurzvorschau).
 | `<installer-success-nicht-0>` | Success |
 | `<installer-known-error>` | Failed |
 
-Installer-spezifische Codes aus Phase 0.3 ergaenzen. Jeder unbekannte Exit-Code erzeugt `0x80070000+code` in der Fehleranzeige.
+Add the installer-specific codes from Phase 0.3. Every unknown exit code produces `0x80070000+code` in the error display.
 
 ### F.5 Requirements
 
-| Intune-Feld | Wert | Hinweise |
+| Intune field | Value | Notes |
 |---|---|---|
-| **Operating system architecture** | x64 / x86 / Both | matched zu `$adtSession.AppArch` |
-| **Minimum operating system** | Win11 22H2 / Win10 22H2 | realitaetsnah, nicht "Win10 1607" |
-| **Disk space required (MB)** | `<MB>` | aus Installer-Anforderung, Netto + 20% Reserve |
-| **Physical memory required (MB)** | `<MB>` oder leer | nur bei RAM-hungrigen Installern |
-| **Minimum number of logical processors required** | 1 / 2 / 4 | selten relevant |
-| **Minimum CPU speed required (MHz)** | leer | selten relevant |
-| **Additional requirement rules** | optional | Registry/File/Script - z.B. "Domain-Joined", "hat Edge-WebView2 installiert" |
+| **Operating system architecture** | x64 / x86 / Both | matches `$adtSession.AppArch` |
+| **Minimum operating system** | Win11 22H2 / Win10 22H2 | realistic, not "Win10 1607" |
+| **Disk space required (MB)** | `<MB>` | from the installer requirement, net + 20% reserve |
+| **Physical memory required (MB)** | `<MB>` or empty | only for RAM-hungry installers |
+| **Minimum number of logical processors required** | 1 / 2 / 4 | rarely relevant |
+| **Minimum CPU speed required (MHz)** | empty | rarely relevant |
+| **Additional requirement rules** | optional | Registry/File/Script - e.g. "Domain-Joined", "has Edge WebView2 installed" |
 
 ### F.6 Detection rules
 
-**Rules format:** einen Weg waehlen, NICHT mischen:
+**Rules format:** choose one way, do NOT mix:
 
-**Option A - Custom script (bevorzugt fuer komplexe Installs):**
-| Feld | Wert |
+**Option A - Custom script (preferred for complex installs):**
+| Field | Value |
 |---|---|
 | **Rules format** | Use a custom detection script |
-| **Script file** | `Detect-<AppName>.ps1` (mit Paket ausgeliefert) |
-| **Run script as 32-bit process on 64-bit clients** | No (ausser das Script liest bewusst Wow6432Node) |
-| **Enforce script signature check** | No (es sei denn in streng signierter Umgebung) |
+| **Script file** | `Detect-<AppName>.ps1` (shipped with the package) |
+| **Run script as 32-bit process on 64-bit clients** | No (unless the script deliberately reads Wow6432Node) |
+| **Enforce script signature check** | No (unless in a strictly signed environment) |
 
-Detection-Script-Contract:
+Detection-script contract:
 - `exit 0 + stdout non-empty` -> INSTALLED
 - `exit 0 + stdout empty` -> NOT INSTALLED
-- `exit != 0` -> Detection-Error (Intune retriet)
+- `exit != 0` -> detection error (Intune retries)
 
-**Option B - Manuell, MSI Product Code:**
-| Feld | Wert |
+**Option B - Manual, MSI Product Code:**
+| Field | Value |
 |---|---|
 | **Rule type** | MSI |
 | **MSI product code** | `{GUID}` |
-| **MSI product version check** | No ODER operator + version |
+| **MSI product version check** | No OR operator + version |
 
-**Option C - Manuell, File/Registry:**
-EINE Regel reicht wenn eindeutig. Mehrere Regeln mischen: mit Bedacht, alle muessen matchen.
+**Option C - Manual, File/Registry:**
+ONE rule is enough if unambiguous. Mixing several rules: with care, all must match.
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
 | **Rule type** | File / Registry / App version |
 | **Path / Key** | `<konkret>` |
 | **File/value** | `<konkret>` |
 | **Detection method** | exists / string / version / size / date modified |
-| **Associated with a 32-bit app on 64-bit clients** | No (fast immer) |
+| **Associated with a 32-bit app on 64-bit clients** | No (almost always) |
 
 ### F.7 Dependencies
 
-Andere Win32-Apps die ZUERST installiert sein muessen.
+Other Win32 apps that must be installed FIRST.
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
-| **Dependency app** | z.B. "VC++ 2015-2022 x64" |
-| **Automatically install** | Yes (Intune installiert automatisch nach) |
+| **Dependency app** | e.g. "VC++ 2015-2022 x64" |
+| **Automatically install** | Yes (Intune installs it automatically afterwards) |
 
-Zirkulaere Abhaengigkeiten und >3 Ebenen vermeiden.
+Avoid circular dependencies and >3 levels.
 
 ### F.8 Supersedence
 
-Ersetzt diese App eine Vorversion oder ein anderes Produkt?
+Does this app replace a previous version or another product?
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
-| **Superseded app** | vorherige Version (separater Intune-Eintrag) |
-| **Uninstall previous version** | Yes/No (Yes wenn echter Replace, No wenn parallel moeglich) |
+| **Superseded app** | the previous version (separate Intune entry) |
+| **Uninstall previous version** | Yes/No (Yes for a true replace, No when parallel is possible) |
 
-Maximal **10 Apps** als superseded; **maximal 2 Ebenen** tief (Intune-Limit).
+A maximum of **10 apps** as superseded; **at most 2 levels** deep (Intune limit).
 
 ### F.9 Assignments
 
-Pro Zielgruppe eine Zeile. Mindestens eine Required- ODER Available-Assignment, sonst nie installiert.
+One row per target group. At least one Required OR Available assignment, otherwise it never installs.
 
-| Group (AzureAD / Entra) | Assignment type | Filter (include/exclude) | Install-Availability | Deadline | Restart grace period | Delivery Optimization |
+| Group (AzureAD / Entra) | Assignment type | Filter (include/exclude) | Install availability | Deadline | Restart grace period | Delivery Optimization |
 |---|---|---|---|---|---|---|
-| `<Grp-Devices-Required>` | Required | optional Filter | As soon as possible / Datum | optional Datum | 1440 min + 15 min vor Reboot | Foreground / Background |
-| `<Grp-Users-OptIn>` | Available | optional Filter | - | - | - | Background |
+| `<Grp-Devices-Required>` | Required | optional filter | As soon as possible / date | optional date | 1440 min + 15 min before reboot | Foreground / Background |
+| `<Grp-Users-OptIn>` | Available | optional filter | - | - | - | Background |
 | `<Grp-Cleanup>` | Uninstall | - | - | - | - | - |
 
 **Hints:**
-- Required fuer Pflicht-Rollouts (Security, Compliance, Standard-Tools)
-- Available fuer Self-Service
-- Uninstall fuer gezieltes Entfernen aus Gruppe
-- Filter: Plattform/Version/DeviceName-Regex; bei Edge-Cases prueft IME sauber ob Filter-Property existiert
-- Delivery Optimization Foreground bei Pakete die sofort kommen muessen; Background schont Netz bei grossen Paketen
+- Required for mandatory rollouts (security, compliance, standard tools)
+- Available for self-service
+- Uninstall for targeted removal from a group
+- Filter: platform/version/device-name regex; for edge cases the IME checks cleanly whether the filter property exists
+- Delivery Optimization Foreground for packages that have to arrive immediately; Background spares the network for large packages
 
-**End user notifications** (pro Assignment):
-- `Show all toast notifications` - Default, User sieht Download/Install/Reboot
-- `Show toast notifications for computer restarts` - nur Reboot-Prompt
-- `Hide all toast notifications` - nur fuer silent-only-Apps
+**End user notifications** (per assignment):
+- `Show all toast notifications` - default, the user sees download/install/reboot
+- `Show toast notifications for computer restarts` - only the reboot prompt
+- `Hide all toast notifications` - only for silent-only apps
 
 ### F.10 Review + Create
 
-Vor dem `Create` alle Tabs durchgehen. Nach `Create`: Intune synct nicht sofort — 30-60 min Wartezeit bis Client das Paket sieht. Manuell triggern via Company Portal -> Einstellungen -> Sync.
+Before the `Create`, go through all tabs. After `Create`: Intune does not sync immediately — there is a 30-60 min wait until the client sees the package. Trigger it manually via Company Portal -> Settings -> Sync.
 
-### F.11 Beispielhafte Ausfuellung (Oracle Database 21c XE aus diesem Projekt)
+### F.11 Example filled-in (Oracle Database 21c XE from this project)
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
 | Name | Oracle Database 21c Express Edition |
 | Publisher | Oracle Corporation |
 | App version | 21.0.0.0 |
 | Category | Development, Database |
-| Featured | Yes (fuer Developer-Zielgruppe) |
+| Featured | Yes (for the developer audience) |
 | Information URL | https://docs.oracle.com/en/database/oracle/oracle-database/21/xeinw/ |
 | Privacy URL | https://www.oracle.com/legal/privacy/ |
 | Developer | Oracle |
@@ -1029,31 +1031,31 @@ Vor dem `Create` alle Tabs durchgehen. Nach `Create`: Intune synct nicht sofort 
 | Disk space required | 12288 MB |
 | Physical memory | 4096 MB |
 | Detection | Custom script `Detect-OracleXE.ps1`, Run as 32-bit=No, Signature=No |
-| Dependencies | - (VCRedist ist im PSADT-Pre-Install-Hook integriert) |
-| Supersedence | - (erste Version) |
+| Dependencies | - (VCRedist is integrated in the PSADT pre-install hook) |
+| Supersedence | - (first version) |
 | Required group | Devices-OracleXE-Dev |
 | Available group | Users-OracleXE-OptIn |
 | Install availability | As soon as possible |
 | Restart grace period | 1440 min (24h), 15 min countdown, snooze 240 min |
 
-Das ist ein vollstaendiges Dossier. Jede neue App genauso durchgehen.
+That is a complete dossier. Go through every new app the same way.
 
 ---
 
-## Anhang G: Lessons Learned (aus Praxis-Vorfaellen)
+## Appendix G: Lessons Learned (from real-world incidents)
 
-Diese Lessons stammen aus konkreten Paketierungs-Projekten und gelten fuer PSADT-v4-Intune-Deployments allgemein - nicht app-spezifisch. Jeder neue Vorfall wird hier als neuer Eintrag ergaenzt (Format: Datum, Symptom, Ursache, Fix, allgemeine Lehre).
+These lessons come from concrete packaging projects and apply to PSADT v4 Intune deployments in general - not app-specific. Every new incident is added here as a new entry (format: date, symptom, cause, fix, general lesson).
 
-### 2026-04-21/22 - Datenbank-Paket (grosser Installer, ~2 GB, mit Post-Install-DB-Verify)
+### 2026-04-21/22 - Database package (large installer, ~2 GB, with post-install DB verify)
 
-1. **Em-Dash-Encoding-Bug**: Script hatte 74 Em-Dashes (`—`) als UTF-8 ohne BOM. In Double-Quoted Strings brach PowerShell 5.1 beim Parsen. Exit 1, Intune zeigte `0x80070001`, keine lokalen Logs. Fix: alle Em-Dashes zu `-`, Pfeile `→` zu `->`, UTF-8 BOM gesetzt.
+1. **Em-dash encoding bug**: the script had 74 em-dashes (`—`) as UTF-8 without a BOM. In double-quoted strings PowerShell 5.1 broke during parsing. Exit 1, Intune showed `0x80070001`, no local logs. Fix: all em-dashes to `-`, arrows `→` to `->`, set the UTF-8 BOM.
 
-2. **Transiente Post-Install-Check-False-Positive**: Funktionaler Check direkt nach `msiexec`-Ende lief ins Leere - die durch den Installer registrierten Services waren noch in `Starting`, Listener/API noch nicht erreichbar. Der Single-Check gab `NO_OUTPUT` / leeres Resultat zurueck, das als "nicht installiert" interpretierte Script triggerte eine 30-minuetige Drop+Recreate-Fallback-Aktion - obwohl die Installation eigentlich erfolgreich war. Fix: erst auf Service=Running warten (max 3 min), dann Check-Funktion mit Retry-Loop (6x, 30s Abstand), erst danach Fallback. **Generelle Lesson**: fuer jeden Post-Install-Check der auf asynchron gestarteten State angewiesen ist (Services, Listener, Registry-Keys die ein Dienst schreibt) IMMER Retry-Loop + Service-Ready-Wait, nie Single-Shot. Gilt fuer alle Installer mit Dienst-Registrierung (DBs, Message-Queues, Search-Indexer, Lizenz-Daemons, ...).
+2. **Transient post-install-check false positive**: a functional check right after `msiexec` finished came up empty - the services registered by the installer were still in `Starting`, the listener/API not yet reachable. The single check returned `NO_OUTPUT` / an empty result, which the script interpreted as "not installed" and triggered a 30-minute drop+recreate fallback action - even though the installation was actually successful. Fix: first wait for the service to be Running (max 3 min), then a check function with a retry loop (6x, 30s apart), and only after that the fallback. **General lesson**: for every post-install check that depends on asynchronously started state (services, listeners, registry keys that a service writes) ALWAYS use a retry loop + service-ready wait, never single-shot. Applies to all installers with service registration (DBs, message queues, search indexers, license daemons, ...).
 
-3. **IME-HRESULT-Mapping-Falle**: `0x80070001` sieht aus wie "ERROR_INVALID_FUNCTION" (Win32-API), ist aber `0x80070000 + 1`, also Exit 1 aus dem Script. Immer gegenrechnen.
+3. **IME HRESULT mapping trap**: `0x80070001` looks like "ERROR_INVALID_FUNCTION" (Win32 API), but it is `0x80070000 + 1`, i.e. exit 1 from the script. Always do the math.
 
-4. **IntuneManagementExtension.log vs AppWorkload.log**: IntuneManagementExtension.log zeigt Service-State und State-Machine-Definitionen ("Adding new state transition..." sind nur Tabelleneintraege, KEINE echten Transitions). Fuer Install-Diagnose ist **AppWorkload.log** der Treffer.
+4. **IntuneManagementExtension.log vs AppWorkload.log**: IntuneManagementExtension.log shows the service state and state-machine definitions ("Adding new state transition..." are just table entries, NOT real transitions). For install diagnosis **AppWorkload.log** is the hit.
 
-5. **Acid-Test ist `Invoke-AppDeployToolkit.exe`, nicht `.ps1` direkt**. Die Launcher-Exe nutzt `powershell.exe -Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"` - ein anderer Encoding-Pfad als `.\script.ps1`. Encoding-Bugs fallen nur hier auf.
+5. **The acid test is `Invoke-AppDeployToolkit.exe`, not `.ps1` directly**. The launcher exe uses `powershell.exe -Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"` - a different encoding path than `.\script.ps1`. Encoding bugs only show up here.
 
-6. **Falsche Param-Block-Diagnose vermeiden**: Ich habe zwischenzeitlich `$SuppressRebootPassThru` zu `$AllowRebootPassThru` geaendert - v3-Denken angewandt auf ein v4-Script. Der Launcher uebergibt NICHT automatisch Reboot-Switches; der Parametername ist in v4.x `$SuppressRebootPassThru`. Referenz ist IMMER das Template unter `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1`.
+6. **Avoid a wrong param-block diagnosis**: at one point I changed `$SuppressRebootPassThru` to `$AllowRebootPassThru` - v3 thinking applied to a v4 script. The launcher does NOT automatically pass reboot switches; the parameter name in v4.x is `$SuppressRebootPassThru`. The reference is ALWAYS the template under `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1`.
