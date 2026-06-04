@@ -5,222 +5,238 @@ description: Use this skill when the user wants to build, package, test, trouble
 
 # PSADT v4.x Deployment Skill
 
-## Kurzbeschreibung
+## Summary
 
-Diese Skill begleitet den kompletten Lebenszyklus eines **PSADT-v4.x-Intune-Win32-Pakets** - vom ersten Gespraech bis zum getesteten, hochladefertigen `.intunewin`. Sie ist fuer **Build, Packaging, Test, Troubleshooting und Deployment** gedacht (Trigger u.a. "PSADT Paket bauen", "Intune Paket fuer <App>", "PSADT v4 deploy", oder Arbeit in einem Ordner mit `Invoke-AppDeployToolkit.ps1`).
+This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package** - from the first conversation to a tested, upload-ready `.intunewin`. It is intended for **build, packaging, test, troubleshooting, and deployment** (triggers include "PSADT paket bauen", "intune paket fuer <App>", "PSADT v4 deploy", or working in a folder that contains `Invoke-AppDeployToolkit.ps1`).
 
-**Ablauf (9 Phasen):** 1) Intake (8 Kill-Fragen, IMMER per Klick-Optionen) - 2) Web-Recherche (PSADT-Version + Command-Aenderungen, Silent/Uninstall/Repair der App, Intune-Stolpersteine) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing aller drei Deployment-Types (Install/Uninstall/Repair) - 5) Pre-Flight (Encoding/Parse/Acid-Test) - 6) Packen (IntuneWinAppUtil) - 7) Dossier + Logo - 8) Test - 9) Rollout.
+**Workflow (9 phases):** 1) Intake (8 kill questions, ALWAYS via click options) - 2) Web research (PSADT version + command changes, silent/uninstall/repair of the app, Intune pitfalls) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing all three deployment types (Install/Uninstall/Repair) - 5) Pre-flight (encoding/parse/acid test) - 6) Packaging (IntuneWinAppUtil) - 7) Dossier + logo - 8) Test - 9) Rollout.
 
-**Verbindliche Konventionen (Details im Block unten):**
-- Fragen an den User IMMER per `AskUserQuestion` (Klick-Optionen), nie als Fliesstext
-- Output-`.intunewin` IMMER zentral nach `c:\Temp\PSADTv4\Output\<App>\`
-- Intune-Dossier IMMER `Intune-Dossier.md`, **Deutsch mit echten Umlauten**; Scripts dagegen **Englisch/ASCII**
-- Author IMMER `Patrick Taubert, PHAT Consulting GmbH`; erste Script-Version `0.1`; Changelog im `.NOTES`-Header Pflicht
-- App-Logo (PNG, transparent, hochaufloesend) besorgen -> `Assets\` + `Output\<App>\`
-- Nur Startmenue-Eintraege, KEINE Desktop-Icons
-- Alle drei Deployment-Types (Install/Uninstall/Repair) von Anfang an mitbauen und per Acid-Test pruefen
+**Binding conventions (details in the block below):**
+- ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
+- Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ (default `c:\Temp\PSADTv4\Output\`; actual value from the config via `Get-PsadtConfig`)
+- Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**); scripts on the other hand **English/ASCII**
+- Author ALWAYS assembled from config (`author.person` + `author.company`; default `Patrick Taubert, PHAT Consulting GmbH`); first script version `0.1`; changelog in the `.NOTES` header is mandatory
+- Obtain app logo (PNG, transparent, high resolution) -> `Assets\` + `Output\<App>\`
+- Start Menu entries only, NO desktop icons
+- Build all three deployment types (Install/Uninstall/Repair) from the start and verify them via acid test
 
-Tiefe pro Thema im Referenz-Guide `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md` (Anhaenge A-G).
+Per-topic depth in the reference guide `references/PSADTv4-Deployment-Guide.md` (appendices A-G).
 
 ---
 
-Du fuehrst den User durch den kompletten Lifecycle eines PSADT-v4.x-Intune-Pakets: Intake, Recherche, Scaffold, Customizing, Pre-Flight, Packen, Intune-Upload, Test, Rollout. Verhaltensregeln:
+You guide the user through the complete lifecycle of a PSADT v4.x Intune package: intake, research, scaffold, customizing, pre-flight, packaging, Intune upload, test, rollout. Behavior rules:
 
-- **Fahre die Konversation aktiv** - dump keine Frageliste sondern stell gezielt Blocker-Fragen, recherchiere was recherchierbar ist, zeig dem User Zwischenergebnisse
-- **Fragen IMMER per `AskUserQuestion` (Klick-Optionen) stellen, nie als reinen Fliesstext** - jede Entscheidungsfrage an den User laeuft ueber das `AskUserQuestion`-Tool mit vorausgefuellten, anklickbaren Optionen. Empfohlene Option immer zuerst und mit Suffix "(empfohlen)". Recherchierte Defaults als Optionen anbieten. Das Tool ergaenzt automatisch eine "Other"-Freitext-Option - es muss also keine manuelle Freitext-Alternative gebaut werden. Reiner Text ist nur fuer Zwischenergebnisse/Statusmeldungen erlaubt, nicht fuer Fragen.
-- **Nicht Adobe/Oracle als Default annehmen** - die zu paketierende App kommt immer vom User, Beispiele aus dem Guide sind Illustration
-- **Nachschlag**: Vollstaendiger Referenz-Guide liegt unter `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md` - dort auf konkrete Anhaenge (A-G) verweisen wenn Tiefe noetig, NICHT den ganzen Guide in die Konversation kippen
+- **Actively drive the conversation** - do not dump a question list; ask targeted blocker questions, research what can be researched, show the user intermediate results
+- **ALWAYS ask questions via `AskUserQuestion` (click options), never as plain free text** - every decision question to the user goes through the `AskUserQuestion` tool with pre-filled, clickable options. Always put the recommended option first and mark it with the suffix "(recommended)". Offer researched defaults as options. The tool automatically adds an "Other" free-text option - so there is no need to build a manual free-text alternative. Plain text is only allowed for intermediate results / status messages, not for questions.
+- **Do not assume Adobe/Oracle as default** - the app to be packaged always comes from the user; examples from the guide are illustration
+- **Reference**: The complete reference guide is at `references/PSADTv4-Deployment-Guide.md` - point to specific appendices (A-G) there when depth is needed, do NOT dump the whole guide into the conversation
 
-## Konventionen (VERBINDLICH)
+## Conventions (BINDING)
 
-- **Sprache - getrennt nach Ziel:**
-  - **Intune-Beschreibung / Dossier (`Intune-Dossier.md`): DEUTSCH mit echten Umlauten** (ä, ö, ü, ß) - das ist Fliesstext fuer Endnutzer im Company Portal, dort sind Umlaute korrekt und erwuenscht (KEIN ae/oe/ue ausschreiben).
-  - **In den Scripts selbst (Invoke-AppDeployToolkit.ps1, Extensions, Detection): ALLES auf ENGLISCH** - insb. alle Kommentare. Script-Strings ebenfalls Englisch halten, damit keine Umlaute/Non-ASCII ins PS1 geraten (Encoding-Sauberkeit, siehe Pre-Flight). Umlaute gehoeren NUR in die Dossier-Markdown, nie ins Script.
-- **Author IMMER:** `Patrick Taubert, PHAT Consulting GmbH` (Feld `AppScriptAuthor` im `$adtSession`).
-- **Versionierung des Scripts (`AppScriptVersion` im `$adtSession`):**
-  - Erste Version eines Scripts ist IMMER **`0.1`** (nicht 1.0.0).
-  - Jede inhaltlich gerechtfertigte Aenderung erhoeht die Versionsnummer (kleine Fixes/Klarstellungen -> Patch/Minor, groessere funktionale Aenderungen -> groesserer Sprung). Rein kosmetische Edits ohne Funktionsbezug muessen nicht zwingend hochzaehlen.
-- **Changelog ist Pflicht:** Jede Aenderung an einem Script wird in einem **Changelog im Script-Header (`.NOTES`-Block)** dokumentiert - eine Zeile pro Version: `Version (Datum, Author): Was geaendert wurde`. Bei jeder Aenderung den Changelog-Eintrag UND `AppScriptVersion` zusammen aktualisieren. Format:
+- **Language - split by target:**
+  - **Intune description / dossier (`Intune-Dossier.html`, full HTML): language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
+  - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
+- **Author ALWAYS:** `Patrick Taubert, PHAT Consulting GmbH` (field `AppScriptAuthor` in `$adtSession`).
+- **Script versioning (`AppScriptVersion` in `$adtSession`):**
+  - The first version of a script is ALWAYS **`0.1`** (not 1.0.0).
+  - Every substantively justified change increases the version number (small fixes/clarifications -> patch/minor, larger functional changes -> bigger jump). Purely cosmetic edits without functional relevance do not necessarily need to bump.
+- **Changelog is mandatory:** Every change to a script is documented in a **changelog in the script header (`.NOTES` block)** - one line per version: `Version (date, author): What was changed`. On every change, update the changelog entry AND `AppScriptVersion` together. Format:
   ```
   Changelog:
   - 0.1 (YYYY-MM-DD, Patrick Taubert): Initial version.
-  - 0.2 (YYYY-MM-DD, Patrick Taubert): <was geaendert wurde>.
+  - 0.2 (YYYY-MM-DD, Patrick Taubert): <what was changed>.
   ```
 
-## Ablauf (fuehre in dieser Reihenfolge durch)
+## Workflow (execute in this order)
 
-### 1. Intake (sofort am Anfang, bevor irgendwas anderes)
+### 0. Setup (Phase 0 — run before intake)
 
-Kritisch: Ein PSADT-v4-Paket bedient IMMER drei Deployment-Types — **Install, Uninstall, Repair**. Alle drei muessen von Anfang an mitgeplant werden, nicht erst am Ende.
+Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
-Stelle die **8 Kill-Fragen ausschliesslich per `AskUserQuestion`-Tool** (anklickbare Optionen), NICHT als Fliesstext-Liste. Da das Tool max. 4 Fragen pro Aufruf erlaubt, in **zwei `AskUserQuestion`-Aufrufen** buendeln (4 + 4). Wo immer moeglich, vorher das Recherchierbare (App, neueste Version, Installer-Typ) leicht antesten und die Befunde als vorausgewaehlte Optionen anbieten - der User klickt dann nur noch bestaetigen oder korrigieren. Jede Frage bekommt sinnvolle Default-Optionen; die empfohlene zuerst mit Suffix "(empfohlen)". Das Tool haengt automatisch eine "Other"-Freitext-Option an.
+1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
+2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
+   - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
+   - **Languages**: `language.script` (EN), `language.dossier` (DE as default — but a config value, not fixed).
+   - **Author**: `author.person`, `author.company`.
+   - **Intune upload** *(planned for a future version — NOT active in this version)*: mention that it is coming; do NOT ask for tenant/client ID/secret, do NOT set `intune.uploadEnabled`. For now the finished `.intunewin` is uploaded manually in the Admin Center.
+3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` (in this version without `-Secret`).
+4. Provision prerequisites (never block the user):
+   - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
+   - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+5. Re-triggerable at any time via "psadt setup" to change individual values.
 
-Die 8 inhaltlichen Fragen, die abgedeckt sein muessen (auf die zwei Aufrufe verteilen):
-1. **App + exakte Version** - Optionen: erkannte/neueste Version (empfohlen), bekannte Vorversion(en), aus Kontext.
-2. **Installer-Typ** - Optionen: MSI, EXE-Wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, anderes.
-3. **Installer-Quelle** - Optionen: lokal vorhanden (Pfad folgt), runterladen + ins Paket buendeln (empfohlen), zur Laufzeit runterladen.
-4. **Zielgruppe** - Optionen: Required auf Devices, Available im Company Portal, beides; AAD-Gruppen ggf. als Freitext nachziehen.
-5. **Spezielle Config** - Optionen: keine (empfohlen-Default falls nichts bekannt), Registry-Keys, XML/JSON/settings-Datei, Lizenzkey, Service-Account, Branding (multiSelect: true sinnvoll).
-6. **Reboot-Verhalten** - Optionen: nie (empfohlen), empfohlen (3010), erzwungen (1641).
-7. **Uninstall-Semantik** - Optionen fuer "was muss weg": nur App-Dateien, + Registry-Reste, + Scheduled Tasks/Services/Firewall, + User-Daten (multiSelect). Plus separate Frage/Option, was definitiv ERHALTEN bleiben muss (User-Daten, Shared-Komponenten, Nachbar-Produkte gleicher Hersteller). Uninstall-Method (MSI-ProductCode / Registry-UninstallString / eigener Uninstaller) als eigene Frage falls unklar.
-8. **Repair-Semantik** - Optionen: kein Repair noetig, MSI /fa, Config zurueck auf Default, kompletter Reinstall (empfohlen bei ZIP/EXE), Service-Restart.
+### 1. Intake (right at the start, before anything else)
 
-Optional je nach Kontext per weiteren `AskUserQuestion`-Aufruf nachziehen: Co-Existenz mit Vorversionen, Prozesse-schliessen-Liste, Sprache (EN/DE/Multi), Architektur (x64/x86/ARM64). Nicht alle 30 Fragen aus Guide Phase 0.2 auf einmal - Rest kommt situativ, ebenfalls per Klick-Optionen.
+Critical: A PSADT v4 package ALWAYS serves three deployment types — **Install, Uninstall, Repair**. All three must be planned from the start, not only at the end.
 
-### 2. Web-Recherche (parallel, autonom)
+Ask the **8 kill questions exclusively via the `AskUserQuestion` tool** (clickable options), NOT as a free-text list. Since the tool allows max. 4 questions per call, bundle them into **two `AskUserQuestion` calls** (4 + 4). Wherever possible, lightly probe what is researchable beforehand (app, latest version, installer type) and offer the findings as pre-selected options - the user then only clicks confirm or correct. Each question gets sensible default options; the recommended one first with the suffix "(recommended)". The tool automatically appends an "Other" free-text option.
 
-Nach Intake ohne Rueckfrage sofort **drei parallele Recherchen**:
+The 8 substantive questions that must be covered (spread across the two calls):
+1. **App + exact version** - options: detected/latest version (recommended), known previous version(s), from context.
+2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, other.
+3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime.
+4. **Target audience** - options: Required on devices, Available in Company Portal, both; pull in AAD groups as free text if needed.
+5. **Special config** - options: none (recommended default if nothing is known), registry keys, XML/JSON/settings file, license key, service account, branding (multiSelect: true makes sense).
+6. **Reboot behavior** - options: never (recommended), recommended (3010), forced (1641).
+7. **Uninstall semantics** - options for "what must go": app files only, + registry leftovers, + scheduled tasks/services/firewall, + user data (multiSelect). Plus a separate question/option for what definitely must be KEPT (user data, shared components, neighboring products from the same vendor). Uninstall method (MSI ProductCode / registry UninstallString / custom uninstaller) as a separate question if unclear.
+8. **Repair semantics** - options: no repair needed, MSI /fa, config reset to default, complete reinstall (recommended for ZIP/EXE), service restart.
 
-**a) PSADT-Version sync UND Command-Aenderungen pruefen:**
+Optionally follow up depending on context via a further `AskUserQuestion` call: co-existence with previous versions, processes-to-close list, language (EN/DE/Multi), architecture (x64/x86/ARM64). Not all 30 questions from guide Phase 0.2 at once - the rest comes situationally, also via click options.
+
+### 2. Web research (parallel, autonomous)
+
+After intake, without asking back, immediately run **three parallel research streams**:
+
+**a) Check PSADT version sync AND command changes:**
 ```powershell
 $local = (Get-Module -ListAvailable -Name PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1).Version
 $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest'
 "local=$local latest=$($rel.tag_name)"
 ```
-Wenn divergent: User informieren + `Update-Module PSAppDeployToolkit -Force` empfehlen BEVOR Scaffold.
+If divergent: inform the user + recommend `Update-Module PSAppDeployToolkit -Force` BEFORE scaffold.
 
-**Pflicht, NICHT nur die Versionsnummer vergleichen:** Bei abweichender (neuerer) Version IMMER pruefen, ob sich
-**Commands geaendert haben** - neue, umbenannte, deprecated oder mit geaenderten Parametern. Sonst baut man ein
-Paket mit veralteter Syntax, das beim Launcher-Acid-Test oder erst in Intune bricht. Quellen in dieser Reihenfolge:
-- Release Notes des neuesten Releases: `$rel.body` (oben schon geladen) auf "Breaking", "renamed", "deprecated", "removed", "new function" scannen
-- Changelog/Migration-Doku: https://psappdeploytoolkit.com/docs (v3->v4 Function-Mapping und Versions-Changelogs)
-- GitHub Releases-Uebersicht: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases
-- Im Zweifel die konkret genutzten Cmdlets gegen das installierte Modul verifizieren:
+**Mandatory, do NOT just compare the version number:** On a divergent (newer) version ALWAYS check whether
+**commands have changed** - new, renamed, deprecated, or with changed parameters. Otherwise you build a
+package with outdated syntax that breaks at the launcher acid test or only later in Intune. Sources in this order:
+- Release notes of the latest release: `$rel.body` (already loaded above) scanned for "Breaking", "renamed", "deprecated", "removed", "new function"
+- Changelog/migration docs: https://psappdeploytoolkit.com/docs (v3->v4 function mapping and version changelogs)
+- GitHub releases overview: https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases
+- When in doubt, verify the actually used cmdlets against the installed module:
   `Get-Command -Module PSAppDeployToolkit -Name Start-ADTProcess,Start-ADTMsiProcess,Show-ADTInstallationWelcome,New-ADTShortcut,Remove-ADTFolder | Select Name,Version`
-  und bei Bedarf `Get-Help <Cmdlet> -Parameter *` fuer geaenderte Parameter.
-Befund dem User zeigen (welche Commands neu/geaendert/deprecated sind und was das fuers Paket bedeutet) BEVOR gebaut wird.
+  and if needed `Get-Help <Cmdlet> -Parameter *` for changed parameters.
+Show the finding to the user (which commands are new/changed/deprecated and what that means for the package) BEFORE building.
 
-**b) Silent-Install / Uninstall / Repair-Recherche zur App** via WebSearch — ALLE DREI, nicht nur Install:
+**b) Silent install / uninstall / repair research on the app** via WebSearch — ALL THREE, not just install:
 - Query 1: `"<AppName>" "<Version>" silent install command line`
 - Query 2: `"<AppName>" msi transform enterprise deployment`
 - Query 3: `"<AppName>" uninstall silent /quiet /qn msiexec`
-- Query 4: `"<AppName>" repair reinstall command line` (oft `msiexec /fa <ProductCode>` bei MSIs; bei EXE-Wrappers: reinstall ueber den gleichen Installer)
-- Query 5: `"<AppName>" "uninstall" "registry" "leftover"` — dokumentierte Leichen aus der Community
-- Offizielle Hersteller-Docs zuerst, dann silentinstallhq.com, dann Community (Reddit r/Intune, PSADT Discourse)
+- Query 4: `"<AppName>" repair reinstall command line` (often `msiexec /fa <ProductCode>` for MSIs; for EXE wrappers: reinstall via the same installer)
+- Query 5: `"<AppName>" "uninstall" "registry" "leftover"` — documented leftovers from the community
+- Official vendor docs first, then silentinstallhq.com, then community (Reddit r/Intune, PSADT Discourse)
 
-Ergebnis pro Deployment-Type festhalten: Switch, erwartete Exit-Codes, Log-Pfad, bekannte Leichen.
+Record per deployment type: switch, expected exit codes, log path, known leftovers.
 
-**c) Bekannte Intune-Stolpersteine:**
+**c) Known Intune pitfalls:**
 - Query: `"<AppName>" intune win32 known issues`
-- Query: `"<AppName>" PSADT package github` (falls jemand schon ein Paket gebaut hat)
+- Query: `"<AppName>" PSADT package github` (in case someone already built a package)
 
-Ergebnis in die Phase-0.3-Tabelle aus dem Guide packen und dem User zeigen BEVOR das Scaffold gebaut wird.
+Put the result into the Phase-0.3 table from the guide and show it to the user BEFORE the scaffold is built.
 
 ### 3. Scaffold (`New-ADTTemplate`)
 
-Werte aus Intake + Recherche einsetzen. **NICHT hardcoden**, **nicht Adobe/Oracle nehmen**.
+Insert values from intake + research. **Do NOT hardcode**, **do not use Adobe/Oracle**.
 
 ```powershell
 Import-Module PSAppDeployToolkit
-# WICHTIG: New-ADTTemplate akzeptiert in 4.1.x NUR -Destination/-Name/-Version (Modulversion)/-Force/-Show/-PassThru.
-# Es nimmt KEINE App-Metadaten (-AppVendor/-AppName/-AppVersion/-AppScriptAuthor ...). Die kommen NACH dem Scaffold
-# ins $adtSession-Hashtable im Invoke-AppDeployToolkit.ps1.
-New-ADTTemplate -Destination '<Root-aus-User-Angabe>' -Name '<AppName aus Intake>'
+# IMPORTANT: In 4.1.x, New-ADTTemplate ONLY accepts -Destination/-Name/-Version (module version)/-Force/-Show/-PassThru.
+# It takes NO app metadata (-AppVendor/-AppName/-AppVersion/-AppScriptAuthor ...). Those go AFTER the scaffold
+# into the $adtSession hashtable in Invoke-AppDeployToolkit.ps1.
+New-ADTTemplate -Destination '<root-from-user-input>' -Name '<AppName from intake>'
 ```
 
-Danach im erzeugten `Invoke-AppDeployToolkit.ps1` das `$adtSession`-Hashtable fuellen - inkl. der verbindlichen Konventionen:
+Then fill the `$adtSession` hashtable in the generated `Invoke-AppDeployToolkit.ps1` - including the binding conventions:
 ```powershell
-AppVendor = '<Hersteller>'
-AppName = '<Produkt-Kurzname>'
-AppVersion = '<Version>'
+AppVendor = '<vendor>'
+AppName = '<short product name>'
+AppVersion = '<version>'
 AppArch = '<x64|x86|ARM64>'
 AppLang = 'EN'
 AppRevision = '01'
 AppSuccessExitCodes = @(0, 1707)
 AppRebootExitCodes = @(1641, 3010)
-AppScriptVersion = '0.1'                              # erste Version IMMER 0.1, siehe Konventionen
-AppScriptAuthor = 'Patrick Taubert, PHAT Consulting GmbH'   # IMMER dieser Author
+AppScriptVersion = '0.1'                              # first version ALWAYS 0.1, see conventions
+AppScriptAuthor = 'Patrick Taubert, PHAT Consulting GmbH'   # ALWAYS this author
 ```
-Und im Header-Kommentar (`.NOTES`) den Changelog anlegen: `- 0.1 (YYYY-MM-DD, Patrick Taubert): Initial version.`
+And in the header comment (`.NOTES`) create the changelog: `- 0.1 (YYYY-MM-DD, Patrick Taubert): Initial version.`
 
-Verify direkt nach Scaffold:
+Verify right after scaffold:
 ```powershell
-$pkg = '<Scaffold-Pfad>'
+$pkg = '<scaffold path>'
 (Import-PowerShellDataFile "$pkg\PSAppDeployToolkit\PSAppDeployToolkit.psd1").ModuleVersion
 Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersion' -List | Select-Object Line
 ```
-Beides muss matchen.
+Both must match.
 
-### 4. Script-Customizing — alle drei Deployment-Types
+### 4. Script customizing — all three deployment types
 
-Der User legt Installer in `<pkg>\Files\`. Dann in `Invoke-AppDeployToolkit.ps1` **alle drei Hooks** fuellen: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Auch wenn heute nur Install gebraucht ist: spaetere User-Uninstalls via Company Portal funktionieren nur mit gefuelltem Uninstall-Block.
+The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** in `Invoke-AppDeployToolkit.ps1`: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Even if only install is needed today: later user uninstalls via Company Portal only work with a filled uninstall block.
 
-**4a. `Install-ADTDeployment`** — Pattern je nach Installer-Typ aus der Recherche:
+**4a. `Install-ADTDeployment`** — pattern depending on installer type from the research:
 
 - MSI: `Start-ADTMsiProcess -FilePath "$($adtSession.DirFiles)\<installer>.msi" -Transforms "$($adtSession.DirSupportFiles)\<transform>.mst" -ArgumentList '/qn REBOOT=ReallySuppress'`
-- EXE-Wrapper: `Start-ADTProcess -FilePath "$($adtSession.DirFiles)\<setup>.exe" -ArgumentList '<recherchierte-silent-switches>' -SuccessExitCodes @(0, 3010, 1641)`
-- InstallShield mit `setup.exe /s /f1"<response>.iss"`: Response-File in `SupportFiles\`
-- Squirrel (`<app>-<ver>-full.nupkg`-based .exe): oft `/silent /quiet`
+- EXE wrapper: `Start-ADTProcess -FilePath "$($adtSession.DirFiles)\<setup>.exe" -ArgumentList '<researched silent switches>' -SuccessExitCodes @(0, 3010, 1641)`
+- InstallShield with `setup.exe /s /f1"<response>.iss"`: response file in `SupportFiles\`
+- Squirrel (`<app>-<ver>-full.nupkg`-based .exe): often `/silent /quiet`
 
-Pflicht vor Install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in Silent, aktiv in Interactive). Dann `Show-ADTInstallationProgress` fuer die Welcome-Ersatz-Anzeige.
+Mandatory before install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in silent, active in interactive). Then `Show-ADTInstallationProgress` for the welcome-replacement display.
 
-**Verknuepfungen - NUR Startmenue, NIE Desktop:** Wenn die App eine Verknuepfung braucht, ausschliesslich einen
-Startmenue-Eintrag fuer alle User anlegen (`$envCommonStartMenuPrograms`, z.B.
-`New-ADTShortcut -Path "$envCommonStartMenuPrograms\<App>\<App>.lnk" -TargetPath ...`). **Keine Desktop-Icons**
-(`$envCommonDesktop` / `$envUserDesktop`) erstellen - das verschmutzt den Desktop und ist im Enterprise unerwuenscht.
-Falls der Installer von sich aus ein Desktop-Icon anlegt: im Post-Install gezielt wieder entfernen
-(`Remove-Item "$envCommonDesktop\<App>.lnk"`). Im Uninstall den Startmenue-Eintrag wieder mit abraeumen.
+**Shortcuts - ONLY Start Menu, NEVER desktop:** If the app needs a shortcut, create exclusively a
+Start Menu entry for all users (`$envCommonStartMenuPrograms`, e.g.
+`New-ADTShortcut -Path "$envCommonStartMenuPrograms\<App>\<App>.lnk" -TargetPath ...`). **No desktop icons**
+(`$envCommonDesktop` / `$envUserDesktop`) - that clutters the desktop and is unwanted in the enterprise.
+If the installer creates a desktop icon on its own: remove it again specifically in post-install
+(`Remove-Item "$envCommonDesktop\<App>.lnk"`). In uninstall, clean up the Start Menu entry as well.
 
-**4b. `Uninstall-ADTDeployment`** — Werte aus Intake-Frage 7 (was weg, was bleibt):
+**4b. `Uninstall-ADTDeployment`** — values from intake question 7 (what goes, what stays):
 
-- MSI bekannter ProductCode: `Start-ADTMsiProcess -Action Uninstall -FilePath '{<ProductCode>}' -ArgumentList '/qn'`
-- MSI per DisplayName-Match (wenn ProductCode variiert): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (nicht `Contains` - das loescht versehentlich Nachbar-Produkte mit Namens-Prefix)
-- EXE mit eigenem Uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-aus-registry>' -ArgumentList '<silent-uninstall-switches>'`
+- MSI with known ProductCode: `Start-ADTMsiProcess -Action Uninstall -FilePath '{<ProductCode>}' -ArgumentList '/qn'`
+- MSI via DisplayName match (when ProductCode varies): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (not `Contains` - that accidentally removes neighboring products with a name prefix)
+- EXE with its own uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-from-registry>' -ArgumentList '<silent uninstall switches>'`
 - Squirrel: `Start-ADTProcess -FilePath "$env:LocalAppData\<app>\update.exe" -ArgumentList '--uninstall -s'`
 
-Post-Uninstall-Cleanup (anhand Intake-Frage 7):
-- `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60` (nicht `-Silent` - Uninstalls sollten Prozesse killen durfen)
-- Scheduled Tasks: `Get-ScheduledTask -TaskName '<Prefix>_*' | Unregister-ScheduledTask -Confirm:$false`
-- Services: `Stop-Service <Name>` + `sc.exe delete <Name>` fuer Services die der Installer nicht selbst wegraeumt
-- Firewall-Rules: `Get-NetFirewallRule -DisplayName '<App>*' | Remove-NetFirewallRule`
-- Registry-Leichen: gezielt nur unter dem APP-spezifischen Key loeschen, NIE unter `HKLM\SOFTWARE\<Hersteller>\` pauschal (andere Produkte gleicher Firma leiden)
-- Install-Directory `Remove-Item -Recurse` wenn Installer nicht von selbst aufraeumt
-- User-Daten (AppData, Dokumente, Templates): DEFAULT **behalten**, nur auf explizite Intake-7-Anweisung entfernen (und dann gezielt per `Invoke-ADTAllUsersRegistryAction` / `$envProfilesDirectory`-Iteration pro User)
+Post-uninstall cleanup (based on intake question 7):
+- `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60` (not `-Silent` - uninstalls should be allowed to kill processes)
+- Scheduled tasks: `Get-ScheduledTask -TaskName '<Prefix>_*' | Unregister-ScheduledTask -Confirm:$false`
+- Services: `Stop-Service <Name>` + `sc.exe delete <Name>` for services the installer does not clean up itself
+- Firewall rules: `Get-NetFirewallRule -DisplayName '<App>*' | Remove-NetFirewallRule`
+- Registry leftovers: delete specifically only under the APP-specific key, NEVER under `HKLM\SOFTWARE\<vendor>\` wholesale (other products of the same company suffer)
+- Install directory `Remove-Item -Recurse` if the installer does not clean up on its own
+- User data (AppData, documents, templates): DEFAULT **keep**, only remove on explicit intake-7 instruction (and then specifically via `Invoke-ADTAllUsersRegistryAction` / `$envProfilesDirectory` iteration per user)
 
-Gegenbeispiel zum Warnen: NIE `Remove-Item 'HKLM:\SOFTWARE\<Hersteller>' -Recurse` machen. Immer APP-Sub-Key.
+Counter-example to warn about: NEVER do `Remove-Item 'HKLM:\SOFTWARE\<vendor>' -Recurse`. Always the APP sub-key.
 
-**4c. `Repair-ADTDeployment`** — Werte aus Intake-Frage 8:
+**4c. `Repair-ADTDeployment`** — values from intake question 8:
 
-- Wenn in Intake "nicht benoetigt": Hook leer lassen oder mit `Write-ADTLogEntry -Message 'Repair nicht unterstuetzt - bitte Uninstall + Install nutzen.'` + `throw` abbrechen
-- MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = alle Files neu, Shortcuts + Registry werden erneut gesetzt)
-- EXE-Wrapper ohne dedizierten Repair-Modus: Uninstall gefolgt von Install im selben Hook; User-Config moeglichst erhalten (Backup-Wiederherstell-Logik wenn noetig)
-- Config-Only-Repair: Service stoppen, Config-Files aus `SupportFiles\` zurueckkopieren, Service starten - ohne die App neu zu installieren (schneller, weniger invasiv)
+- If intake says "not needed": leave the hook empty or abort with `Write-ADTLogEntry -Message 'Repair not supported - please use Uninstall + Install.'` + `throw`
+- MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again)
+- EXE wrapper without a dedicated repair mode: uninstall followed by install in the same hook; preserve user config if possible (backup-restore logic if needed)
+- Config-only repair: stop the service, copy the config files back from `SupportFiles\`, start the service - without reinstalling the app (faster, less invasive)
 
-**Custom-Helpers** IMMER in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1`, nie im Main-Script.
+**Custom helpers** ALWAYS in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1`, never in the main script.
 
-### 5. Pre-Flight-Checks (Pflicht vor Packen)
+### 5. Pre-flight checks (mandatory before packaging)
 
-Dreimal gruen pro Deployment-Type, sonst nicht weiter:
+Three green per deployment type, otherwise do not proceed:
 
 ```powershell
-$s = '<pfad-zur-ps1>'
+$s = '<path-to-ps1>'
 
 # Check 1: Encoding
 $bytes = [System.IO.File]::ReadAllBytes($s)
 $hasBom = $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
 $nonAscii = ([regex]::Matches($text, '[^\x00-\x7F]')).Count
-"HasBOM=$hasBom NonAscii=$nonAscii"   # Anforderung: HasBOM=True ODER NonAscii=0
+"HasBOM=$hasBom NonAscii=$nonAscii"   # Requirement: HasBOM=True OR NonAscii=0
 
 # Check 2: Parse
 $errs = $null
 $null = [System.Management.Automation.Language.Parser]::ParseFile($s, [ref]$null, [ref]$errs)
 if ($errs) { $errs | Select Message,@{N='L';E={$_.Extent.StartLineNumber}} | Format-List } else { 'PARSE_OK' }
 
-# Check 3: Launcher-Acid-Test pro Deployment-Type (je einmal)
+# Check 3: Launcher acid test per deployment type (once each)
 foreach ($dt in 'Install','Uninstall','Repair') {
     "--- Acid-Test $dt ---"
     Start-Process powershell.exe -ArgumentList `
         '-ExecutionPolicy','Bypass','-NonInteractive','-NoProfile','-NoLogo',`
         '-Command', "try { & '$s' -DeploymentType $dt -DeployMode Silent } catch { throw }; exit `$Global:LASTEXITCODE" `
         -Wait -NoNewWindow -RedirectStandardError "stderr-$dt.log"
-    Get-Content "stderr-$dt.log"   # Darf keine Parse-Errors zeigen
+    Get-Content "stderr-$dt.log"   # Must show no parse errors
 }
 ```
 
-Wenn einer der drei Types rot wird: das ist NICHT ok auch wenn Install gruen ist. Company-Portal-User kriegt sonst beim Uninstall-Klick 0x80070001.
+If one of the three types turns red: that is NOT ok even if install is green. Otherwise the Company Portal user gets 0x80070001 when clicking uninstall.
 
-Bei Encoding-Bug (Check 1 rot oder Check 3 Parse-Errors): Em-Dashes / Smart-Quotes ersetzen + UTF-8 BOM:
+On an encoding bug (check 1 red or check 3 parse errors): replace em-dashes / smart quotes + UTF-8 BOM:
 ```powershell
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
 $text = $text -replace [char]0x2014, '-' -replace [char]0x2013, '-' -replace [char]0x2192, '->' `
@@ -229,33 +245,35 @@ $text = $text -replace [char]0x2014, '-' -replace [char]0x2013, '-' -replace [ch
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-Bei Check 3 zu gefaehrlich weil echter Install starten wuerde: Test-Stub aus Guide Anhang C verwenden (Install-ADTDeployment-Call ersetzen durch `exit 77`-Stub, Launcher-Test, erwartet Exit 77).
+If check 3 is too dangerous because a real install would start: use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
 
-Zusaetzlich scannen:
+Additionally scan:
 ```powershell
-# v3-Reste
+# v3 leftovers
 $v3 = 'Execute-Process','Execute-MSI','Write-Log','Show-InstallationWelcome','Show-InstallationProgress','Show-InstallationPrompt','Get-InstalledApplication','Remove-MSIApplications','Refresh-Desktop','Update-GroupPolicy','Block-AppExecution'
 $t = [System.IO.File]::ReadAllText($s)
 foreach ($fn in $v3) { $m = [regex]::Matches($t, "\b$fn\b"); if ($m.Count) { "V3_FOUND: $fn ($($m.Count)x)" } }
 
-# Top-Level-Statements die werfen koennten
+# Top-level statements that could throw
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($s, [ref]$null, [ref]$null)
 $ast.EndBlock.Statements | Where-Object { $_ -isnot [System.Management.Automation.Language.FunctionDefinitionAst] } |
     ForEach-Object { "L$($_.Extent.StartLineNumber): $($_.GetType().Name)" }
 ```
 
-### 6. Packen mit IntuneWinAppUtil
+### 6. Packaging with IntuneWinAppUtil
 
-**Output-Ordner-Konvention (VERBINDLICH, nicht jedes Mal woanders):** Das fertige `.intunewin` IMMER nach
-`c:\Temp\PSADTv4\Output\<AppName[-Version]>\` legen - ein zentraler `Output`-Ordner im PSADTv4-Hauptverzeichnis,
-darunter ein Unterordner pro App (z.B. `Output\EclipseJEE\`, `Output\RSAT-1.0.0\`, `Output\ApacheMaven-3.9.16\`).
-NIE einen eigenen `_IntuneOutput`/`<App>-IntuneOutput`-Ordner neben dem Paket anlegen. In den App-Unterordner gehoeren
-neben der `.intunewin` auch das Detection-Script und das Intune-Dossier (1 Ort pro App, alles beisammen).
-Wichtig: `-c` (Source) ist der PAKET-Ordner, `-o` (Output) ist der zentrale Output-Unterordner - die beiden sind
-verschiedene Baeume, also liegt `-o` automatisch AUSSERHALB von `-c`.
+**Tool path and version are config-driven** (`paths.intuneWinAppUtil`) and are provisioned and kept current by `scripts/Get-IntuneWinAppUtil.ps1` (the inline download below stays as a manual fallback).
+
+**Output folder convention (BINDING, not somewhere different each time):** ALWAYS place the finished `.intunewin` into
+`c:\Temp\PSADTv4\Output\<AppName[-Version]>\` - a central `Output` folder in the PSADTv4 main directory,
+with a sub-folder per app underneath (e.g. `Output\EclipseJEE\`, `Output\RSAT-1.0.0\`, `Output\ApacheMaven-3.9.16\`).
+NEVER create a separate `_IntuneOutput`/`<App>-IntuneOutput` folder next to the package. The app sub-folder holds,
+besides the `.intunewin`, also the detection script and the Intune dossier (1 place per app, everything together).
+Important: `-c` (source) is the PACKAGE folder, `-o` (output) is the central output sub-folder - the two are
+different trees, so `-o` automatically lies OUTSIDE `-c`.
 
 ```powershell
-# IntuneWinAppUtil holen (das GitHub-Release hat KEINE Assets - exe liegt im Repo-Tree, daher raw-Download)
+# Fetch IntuneWinAppUtil (the GitHub release has NO assets - the exe lives in the repo tree, hence raw download)
 $tool = 'C:\Tools\IntuneWinAppUtil.exe'
 if (-not (Test-Path $tool)) {
     New-Item 'C:\Tools' -ItemType Directory -Force | Out-Null
@@ -263,159 +281,161 @@ if (-not (Test-Path $tool)) {
     Invoke-WebRequest "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/$tag/IntuneWinAppUtil.exe" -OutFile $tool
 }
 
-$src = '<pkgFolder>'                                            # Paket-Ordner mit Invoke-AppDeployToolkit.ps1/.exe
-$out = 'c:\Temp\PSADTv4\Output\<AppName[-Version]>'             # ZENTRAL, pro-App-Unterordner
+$src = '<pkgFolder>'                                            # package folder with Invoke-AppDeployToolkit.ps1/.exe
+$out = 'c:\Temp\PSADTv4\Output\<AppName[-Version]>'             # CENTRAL, per-app sub-folder
 New-Item $out -ItemType Directory -Force | Out-Null
 & $tool -c $src -s 'Invoke-AppDeployToolkit.exe' -o $out -q
-# Detection-Script + Dossier daneben legen (Dossier IMMER als Intune-Dossier.md):
+# Place the detection script + dossier alongside (dossier ALWAYS as Intune-Dossier.html):
 Copy-Item '<pkgFolder>\Detect-*.ps1' $out -Force -ErrorAction SilentlyContinue
-Copy-Item '<pkgFolder>\Intune-Dossier.md' $out -Force -ErrorAction SilentlyContinue
+Copy-Item '<pkgFolder>\Intune-Dossier.html' $out -Force -ErrorAction SilentlyContinue
 ```
 
-**Kritisch**: `-o` NIE INNERHALB von `-c` waehlen - sonst landet beim Rebuild die alte .intunewin rekursiv im Paket.
-Der zentrale `Output\`-Ordner liegt ohnehin ausserhalb jedes Paket-Ordners, das ist genau der Grund fuer die Konvention.
+**Critical**: NEVER choose `-o` INSIDE `-c` - otherwise the old .intunewin lands recursively in the package on rebuild.
+The central `Output\` folder lies outside every package folder anyway, which is exactly the reason for the convention.
 
-Verify der .intunewin:
+Verify the .intunewin:
 ```powershell
 $iw = Get-ChildItem "$out\*.intunewin" | Select-Object -First 1
 "Size: $([Math]::Round($iw.Length / 1MB, 1)) MB"
 Expand-Archive $iw.FullName -DestinationPath "$env:TEMP\iw-check" -Force
 Get-Content "$env:TEMP\iw-check\IntuneWinPackage\Metadata\Detection.xml" | Select-String 'SetupFile'
-# Muss zeigen: <SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>
+# Must show: <SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>
 ```
 
-### 7. Intune-Dossier
+### 7. Intune dossier
 
-Anhang F aus dem Referenz-Guide als Template: die Datei IMMER **`Intune-Dossier.md`** nennen (fixer Name, NICHT `<App>-IntuneDossier.md` oder `Intune-App-Metadata.md` - der App-Name steckt schon im Output-Unterordner) und im zentralen `Output\<App>\`-Ordner ablegen. Alle Tabellen fuellen (App Info, Description-Markdown, Program, Return Codes inkl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments). User pruefen lassen, dann er/sie uebertraegt die Werte 1:1 ins Intune Admin Center.
+Use appendix F from the reference guide as a template: ALWAYS name the file **`Intune-Dossier.html`** (fixed name, NOT `<App>-IntuneDossier.html` or `Intune-App-Metadata.html` - the app name is already in the output sub-folder) and place it in the central `Output\<App>\` folder. The dossier is **full HTML**. Fill all tables (App Info, description HTML, Program, Return Codes incl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments). Let the user review, then he/she transfers the values 1:1 into the Intune Admin Center.
 
-**App-Logo automatisch besorgen (Pflicht):** Ein passendes Logo der App suchen und herunterladen - **PNG, transparenter Hintergrund, hohe Aufloesung** (Richtwert >= 512px, lieber mehr; quadratisch ist fuer die Company-Portal-Kachel am besten). Ablegen unter `<pkg>\Assets\<App>-Logo.png` UND eine Kopie nach `Output\<App>\`. Im Dossier in der Logo-Zeile den Dateinamen referenzieren.
-- **Quelle lizenzklar waehlen:** zuerst offizielle Hersteller-/Projekt-Quelle (z.B. `apache.org/logos/res/<projekt>/` fuer Apache-Projekte), sonst **Wikimedia Commons** (stabile URLs, SVG wird serverseitig als transparentes PNG gerendert):
+The dossier language follows `language.dossier` (default German), and its umlauts stay (real ä, ö, ü, ß), because it is end-user output for the Company Portal.
+
+**Note: direct Graph upload is planned for a future skill version.** For now the user uploads the generated `.intunewin` manually in the Intune Admin Center.
+
+**Obtain the app logo automatically (mandatory):** Search for and download a suitable logo of the app - **PNG, transparent background, high resolution** (guideline >= 512px, more is better; square is best for the Company Portal tile). Place it under `<pkg>\Assets\<App>-Logo.png` AND a copy into `Output\<App>\`. Reference the filename in the logo row of the dossier.
+- **Choose a license-clear source:** first the official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects), otherwise **Wikimedia Commons** (stable URLs, SVG is rendered server-side as a transparent PNG):
   ```powershell
-  # Wikimedia: SVG -> transparentes PNG in Wunschbreite (hier 1024)
+  # Wikimedia: SVG -> transparent PNG at the desired width (here 1024)
   $api = "https://commons.wikimedia.org/w/api.php?action=query&titles=$([uri]::EscapeDataString('File:<Logo>.svg'))&prop=imageinfo&iiprop=url&iiurlwidth=1024&format=json"
   $thumb = ((Invoke-RestMethod $api -Headers @{'User-Agent'='PSADT-pkg/1.0'}).query.pages.PSObject.Properties.Value).imageinfo[0].thumburl
   Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
   ```
-  Drittanbieter-PNG-Portale (stickpng, toppng, nicepng ...) meiden - Hotlink-Schutz/Werbung/fragliche Qualitaet.
-- **Verifizieren** (Transparenz + Aufloesung) und dem User zeigen, dass es das richtige Logo ist:
+  Avoid third-party PNG portals (stickpng, toppng, nicepng ...) - hotlink protection/ads/questionable quality.
+- **Verify** (transparency + resolution) and show the user that it is the right logo:
   ```powershell
   Add-Type -AssemblyName System.Drawing
   $i=[System.Drawing.Image]::FromFile('<png>'); "{0}x{1} Alpha={2}" -f $i.Width,$i.Height,[System.Drawing.Image]::IsAlphaPixelFormat($i.PixelFormat); $i.Dispose()
   ```
-  Alpha MUSS True sein (sonst kein transparenter Hintergrund -> anderes File suchen). Das Logo wird in Intune separat im **App-Information-Tab** hochgeladen, ist NICHT Teil des `.intunewin` (kein Repack noetig).
+  Alpha MUST be True (otherwise no transparent background -> look for another file). The logo is uploaded separately in Intune in the **App information tab**, it is NOT part of the `.intunewin` (no repack needed).
 
-**App-Beschreibung IMMER auf DEUTSCH mit echten Umlauten (ä, ö, ü, ß)** - das ist Endnutzer-Text im Company Portal, KEIN ae/oe/ue ausschreiben. (Gilt nur fuer die Dossier-Markdown; die Scripts bleiben Englisch/ASCII - siehe Konventionen.)
+**App description ALWAYS in the dossier language with real umlauts (ä, ö, ü, ß)** - this is end-user text in the Company Portal, do NOT spell out ae/oe/ue. (Applies only to the dossier HTML; the scripts stay English/ASCII - see conventions.)
 
-**App-Beschreibung IMMER in Markdown formatieren** - das Intune-Beschreibungsfeld rendert Markdown (Toolbar-Editor) und stellt es im Company Portal formatiert dar. KEINE reine Fliesstext-Wand. Den Description-Block im Dossier als fertiges Markdown liefern, das der User 1:1 ins Beschreibungsfeld einfuegen kann. Unterstuetzter Funktionsumfang (sicher nutzbar):
-- **Fett** und *kursiv* fuer Hervorhebungen
-- Aufzaehlungslisten (`-`) und nummerierte Listen (`1.`) - ideal fuer Voraussetzungen, gesetzte Variablen, Was-passiert-Schritte
-- Links `[Text](https://...)` fuer Hersteller-/Doku-Seiten
-- Kurze Absaetze statt Block
-- Vorsichtig/sparsam: Ueberschriften und Tabellen (Rendering im Company Portal variiert) - lieber Fett-Zeile + Liste
+**App description ALWAYS formatted as HTML** - the Intune description field has an HTML editor (toolbar) and renders it formatted in the Company Portal. NO plain free-text wall. Deliver the description block in the dossier as ready HTML that the user can paste 1:1 into the description field. Supported feature set (safe to use):
+- `<strong>` (bold) and `<em>` (italic) for emphasis
+- `<ul><li>...</li></ul>` (bulleted) and `<ol><li>...</li></ol>` (numbered) lists - ideal for requirements, set variables, what-happens steps
+- Links `<a href="https://...">Text</a>` for vendor/docs pages
+- Short `<p>` paragraphs instead of a block
 
-Empfohlene Struktur der Beschreibung (anpassen pro App):
-```markdown
-**<AppName> <Version>** - <Ein-Satz-Nutzen>.
-
-**Was diese Bereitstellung macht:**
-- <Installationsziel / Pfad>
-- <gesetzte Umgebungsvariablen / Registry / Config>
-- <besondere Nebenwirkungen>
-
-**Voraussetzungen:**
-- <z.B. JDK, .NET, Vorgängerversion>
-
-**Bei Deinstallation:**
-- <was entfernt wird> / <was erhalten bleibt>
-
-Mehr Infos: [Herstellerseite](https://...)
+Recommended description structure (end-user output — language.dossier, default German; adapt per app):
+```html
+<p><strong>&lt;AppName&gt; &lt;Version&gt;</strong> – &lt;one-sentence value&gt;.</p>
+<p><strong>What this deployment does:</strong></p>
+<ul>
+  <li>&lt;install target / path&gt;</li>
+  <li>&lt;environment variables / registry / config set&gt;</li>
+  <li>&lt;notable side effects&gt;</li>
+</ul>
+<p><strong>Requirements:</strong></p>
+<ul><li>&lt;e.g. JDK, .NET, prior version&gt;</li></ul>
+<p><strong>On uninstall:</strong></p>
+<ul><li>&lt;what is removed&gt; / &lt;what is kept&gt;</li></ul>
+<p>More info: <a href="https://...">Vendor page</a></p>
 ```
 
-Pflicht-Return-Codes die immer rein muessen: `0 Success, 1707 Success, 3010 Soft reboot, 1641 Hard reboot, 1618 Retry, 60001 Failed, 60008 Failed` + installer-spezifische Codes aus der Recherche.
+Mandatory return codes that must always be included: `0 Success, 1707 Success, 3010 Soft reboot, 1641 Hard reboot, 1618 Retry, 60001 Failed, 60008 Failed` + installer-specific codes from the research.
 
-### 8. Test-Sequenz (VOR Production-Rollout) — alle drei Deployment-Types
+### 8. Test sequence (BEFORE production rollout) — all three deployment types
 
-Auf DEV-VM in dieser Reihenfolge. Nach jedem erfolgreichen Install kommt der Uninstall-Test auf **der gleichen VM** (nicht neue VM) - damit Uninstall auch wirklich was zum Abraeumen hat.
+On a DEV VM in this order. After each successful install comes the uninstall test on **the same VM** (not a new VM) - so that uninstall actually has something to clean up.
 
-**Install-Zyklus:**
-1. `.\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent` (Smoke-Test)
-2. `.\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` (Launcher-Acid-Test)
-3. `psexec -s cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"` (SYSTEM-Context; PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec)
+**Install cycle:**
+1. `.\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent` (smoke test)
+2. `.\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` (launcher acid test)
+3. `psexec -s cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"` (SYSTEM context; PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec)
 
-**Uninstall-Zyklus (auf gleicher VM, App muss installiert sein):**
+**Uninstall cycle (on the same VM, app must be installed):**
 4. `.\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent`
-5. Verifikations-Checks nach Uninstall:
-   - Detection-Script (siehe Phase 5 Guide) muss `exit 0 + stdout empty` geben (App = nicht installiert)
-   - `Get-Service '<App-Service>' -ErrorAction SilentlyContinue` - leer
-   - `Get-ScheduledTask '<App-Prefix>*' -ErrorAction SilentlyContinue` - leer
-   - Install-Directory: weg (oder nur User-Config-Reste falls Intake-7 so gewuenscht)
-   - Registry unter `HKLM:\SOFTWARE\<Hersteller>\<App>` - weg
-   - Firewall-Rules `Get-NetFirewallRule -DisplayName '<App>*'` - leer
-   - WICHTIG: Nachbarprodukte gleicher Hersteller noch da (nicht versehentlich mitgeloescht)
+5. Verification checks after uninstall:
+   - Detection script (see Phase 5 guide) must return `exit 0 + stdout empty` (app = not installed)
+   - `Get-Service '<App-Service>' -ErrorAction SilentlyContinue` - empty
+   - `Get-ScheduledTask '<App-Prefix>*' -ErrorAction SilentlyContinue` - empty
+   - Install directory: gone (or only user-config leftovers if intake-7 wanted it so)
+   - Registry under `HKLM:\SOFTWARE\<vendor>\<App>` - gone
+   - Firewall rules `Get-NetFirewallRule -DisplayName '<App>*'` - empty
+   - IMPORTANT: neighboring products of the same vendor still present (not accidentally deleted too)
 
-**Repair-Zyklus (VM wieder neu installieren, dann Repair):**
-6. Install wiederholen (Step 1)
+**Repair cycle (reinstall the VM again, then repair):**
+6. Repeat install (step 1)
 7. `.\Invoke-AppDeployToolkit.exe -DeploymentType Repair -DeployMode Silent`
-8. Detection muss danach weiter = installed zeigen; App-Funktionalitaet manuell smoke-testen
+8. Detection must still show = installed afterwards; smoke-test app functionality manually
 
-**Intune-Testgruppe (nach allen drei Zyklen gruen):**
-9. Paket zuweisen als Required → 1 Test-Device → PSADT-Install-Log + AppWorkload.log pruefen
-10. Von Device uninstallen: in Admin Center als "Uninstall" zuweisen ODER User ueber Company Portal deinstallieren → PSADT-Uninstall-Log pruefen
+**Intune test group (after all three cycles are green):**
+9. Assign the package as Required → 1 test device → check the PSADT install log + AppWorkload.log
+10. Uninstall from the device: assign as "Uninstall" in the Admin Center OR have the user uninstall via Company Portal → check the PSADT uninstall log
 
-Pruefen in jedem Intune-Test:
-- `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` / `*_Uninstall.log` existiert
-- `Close-ADTSession` mit Exit 0 drin
-- AppWorkload.log zeigt passenden Status (`Installed` / `Uninstalled`)
+Check in every Intune test:
+- `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` / `*_Uninstall.log` exists
+- `Close-ADTSession` with exit 0 in it
+- AppWorkload.log shows the matching status (`Installed` / `Uninstalled`)
 
-Nach erfolgreichem Test aller drei Types: Pilot-Gruppe 24-48h, dann Production staged.
+After a successful test of all three types: pilot group 24-48h, then production staged.
 
-## Troubleshooting-Quick-Reference
+## Troubleshooting quick reference
 
-Bei User-Reports in dieser Reihenfolge abklopfen:
+On user reports, check in this order:
 
-| Symptom | Primaerverdacht | Verifikation |
+| Symptom | Primary suspect | Verification |
 |---|---|---|
-| `0x80070001` + keine lokalen PSADT-Logs | Encoding (Em-Dash in "-String") oder Top-Level-Throw | Phase 5 Checks + Anhang A.2 |
-| `0x8000EA68` (60008) + PSADT-Log vorhanden aber leer nach Init | Import-Module / Open-ADTSession wirft | PSADT-Log direkt lesbar, Stack in Anhang A.2 |
-| `0x8000EA61` (60001) + Stacktrace im PSADT-Log | Runtime-Error in Install-ADTDeployment | Stack zeigt Zeile direkt |
-| App haengt "Installing" in Company Portal | IME-State-Cache oder Prozess haengt | Anhang A.2 Aufraeum-Sequenz |
-| `0x80070002` | Launcher findet .ps1 nicht | `-s` beim Packen war falsch |
-| Detection failed after successful install | Detection-Script-Bug (Contract-Verletzung, 32/64-bit-Registry) | Manuell auf Target: `.\Detect-*.ps1; $LASTEXITCODE` |
+| `0x80070001` + no local PSADT logs | Encoding (em-dash in "-string") or top-level throw | Phase 5 checks + appendix A.2 |
+| `0x8000EA68` (60008) + PSADT log present but empty after init | Import-Module / Open-ADTSession throws | PSADT log directly readable, stack in appendix A.2 |
+| `0x8000EA61` (60001) + stacktrace in the PSADT log | Runtime error in Install-ADTDeployment | Stack shows the line directly |
+| App stuck on "Installing" in Company Portal | IME state cache or process hangs | Appendix A.2 cleanup sequence |
+| `0x80070002` | Launcher does not find the .ps1 | `-s` during packaging was wrong |
+| Detection failed after successful install | Detection script bug (contract violation, 32/64-bit registry) | Manually on target: `.\Detect-*.ps1; $LASTEXITCODE` |
 
-HRESULT-Umrechnung: Intune zeigt unbekannte positive Exit-Codes als `0x80070000 + code`. Also `0x80070001` = Exit 1 = Script lief gar nicht. Immer gegenrechnen, nicht von "ERROR_INVALID_FUNCTION"-Text blenden lassen.
+HRESULT conversion: Intune shows unknown positive exit codes as `0x80070000 + code`. So `0x80070001` = exit 1 = script did not run at all. Always recompute, don't be misled by the "ERROR_INVALID_FUNCTION" text.
 
-Logs in dieser Reihenfolge pruefen:
-1. `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AppWorkload.log` (was IME tatsaechlich gemacht hat + Exit-Code)
-2. `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` (PSADT-Session, wenn Init OK war)
-3. `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log` (IME-Service-State)
+Check logs in this order:
+1. `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AppWorkload.log` (what IME actually did + exit code)
+2. `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` (PSADT session, if init was OK)
+3. `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log` (IME service state)
 
-## Anti-Patterns (niemals tun)
+## Anti-patterns (never do)
 
-- v3-Cmdlet-Namen (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...)
-- Em-Dash/Smart-Quote in Double-Quoted Strings
-- UTF-8-Speichern ohne BOM wenn Non-ASCII drin ist
-- Top-Level-Code ausserhalb try/catch
-- `-o` im `-c` beim IntuneWinAppUtil
-- Return Codes 60001/60008 nicht als Failed mappen
-- Annehmen "laeuft lokal = laeuft in Intune" - Launcher-Acid-Test ist Pflicht
-- Detection gemischt (Custom-Script + File-Rule parallel)
-- Extensions-Funktionen ins Main-Script packen statt in Extensions-Modul
-- Install-Zeit reflexartig auf 120 min - 60 min ist fast immer richtig
-- Fallback-Loesch-Aktionen bei erster negativer Async-Antwort triggern (Services brauchen 30-60s nach msiexec, Retry-Loop bauen)
-- Desktop-Icons anlegen (oder vom Installer angelegte stehen lassen) - nur Startmenue-Eintraege, Desktop bleibt sauber
-- Neuere PSADT-Version nur an der Nummer erkennen und blind uebernehmen - immer Release Notes/Changelog auf geaenderte/deprecated Commands pruefen
+- v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...)
+- Em-dash/smart quote in double-quoted strings
+- Saving UTF-8 without BOM when non-ASCII is present
+- Top-level code outside try/catch
+- `-o` inside `-c` for IntuneWinAppUtil
+- Not mapping return codes 60001/60008 as Failed
+- Assuming "runs locally = runs in Intune" - the launcher acid test is mandatory
+- Mixed detection (custom script + file rule in parallel)
+- Putting Extensions functions into the main script instead of the Extensions module
+- Writing the dossier in Markdown instead of HTML (the Intune description field has an HTML editor; the dossier is full HTML)
+- Reflexively setting install time to 120 min - 60 min is almost always right
+- Triggering fallback delete actions on the first negative async response (services need 30-60s after msiexec, build a retry loop)
+- Creating desktop icons (or leaving ones created by the installer) - Start Menu entries only, keep the desktop clean
+- Recognizing a newer PSADT version only by its number and adopting it blindly - always check the release notes/changelog for changed/deprecated commands
 
-## Referenz-Nachschlag
+## Reference lookup
 
-Fuer Tiefe zu jedem Thema: `c:\Temp\PSADTv4\OracleDB\PSADTv4-Deployment-Guide.md`
-- Phase 0.2: Komplette Intake-Fragen-Liste
-- Phase 0.3: Web-Recherche-Pattern
-- Phase 3.1: Encoding-Fix-Details
-- Phase 5: Intune-Config-Felder
-- Anhang A: Error-Codes + Root-Causes
-- Anhang B: Anti-Pattern-Liste
-- Anhang C: Test-Stub-Muster
-- Anhang D: Alle Ressourcen-URLs
-- Anhang E: Finale Deploy-Checkliste
-- Anhang F: Vollstaendiges Intune-Upload-Dossier-Template (alle Felder, alle Tabs)
-- Anhang G: Lessons aus dem Oracle-XE-Projekt
+For depth on every topic: `references/PSADTv4-Deployment-Guide.md`
+- Phase 0.2: Complete intake question list
+- Phase 0.3: Web research pattern
+- Phase 3.1: Encoding fix details
+- Phase 5: Intune config fields
+- Appendix A: Error codes + root causes
+- Appendix B: Anti-pattern list
+- Appendix C: Test stub patterns
+- Appendix D: All resource URLs
+- Appendix E: Final deploy checklist
+- Appendix F: Complete Intune upload dossier template (all fields, all tabs)
+- Appendix G: Lessons from the Oracle XE project

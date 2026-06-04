@@ -35,11 +35,11 @@ description until a task makes it relevant, then the full body loads on demand.
   start, so Company-Portal uninstalls actually work.
 - **Pre-flight checks** — encoding/BOM, AST parse, launcher acid-test per deployment type, and a v3
   cmdlet scan before anything is packaged.
-- **First-run setup** *(in progress)* — a one-time wizard persists machine config (paths, language,
-  author) so conventions are configured once, in one place.
-- **Self-healing prerequisites** *(in progress)* — auto-installs the PSAppDeployToolkit module from the
-  PowerShell Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against
-  their official sources. No manual provisioning, no roadblocks.
+- **First-run setup** — a one-time wizard persists machine config (paths, language, author) so
+  conventions are configured once, in one place.
+- **Self-healing prerequisites** — auto-installs the PSAppDeployToolkit module from the PowerShell
+  Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against their
+  official sources. No manual provisioning, no roadblocks.
 - **Optional direct Intune upload** *(planned — future release)* — will upload the `.intunewin` via
   Microsoft Graph with an app registration (client secret stored DPAPI-encrypted), and stay fully
   optional with a fallback to the manual dossier flow. **Not in the current version yet** — today you
@@ -104,7 +104,8 @@ psadt-deploy/
 ├─ README.md  ·  LICENSE
 ├─ scripts/                          Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil
 │                                    (upload scripts arrive with the future upload feature)
-├─ references/                       PSADTv4-Deployment-Guide.md, app-registration.md
+├─ references/                       PSADTv4-Deployment-Guide.md
+│                                    (app-registration.md arrives with the upload feature)
 ├─ docs/superpowers/specs/           design documents
 ├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
 ├─ config.json   (gitignored)        machine-local settings
@@ -113,8 +114,9 @@ psadt-deploy/
 
 ## Status
 
-The core build/package/test/dossier workflow is in active use. **Shipping next:** first-run setup +
-config, self-healing prerequisites (PSADT module + content-prep tool), and HTML deliverables — see the
+The core build/package/test/dossier workflow is in active use. **Shipped:** first-run setup + config,
+self-healing prerequisites (PSADT module + content-prep tool), and HTML deliverables — verified via the
+Pester suite in `tests/`. See the
 [design spec](docs/superpowers/specs/2026-06-04-psadt-skill-setup-design.md) and
 [implementation plan](docs/superpowers/plans/2026-06-04-psadt-skill-setup.md).
 
