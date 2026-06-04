@@ -27,25 +27,34 @@ description until a task makes it relevant, then the full body loads on demand.
 
 ## Features
 
-- **Guided intake** — asks the blocker questions up front as clickable options, pre-filled with
-  researched defaults (app, latest version, installer type).
-- **Autonomous research** — checks the installed PSADT version against the latest release *and* whether
-  commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
-- **All three deployment types** — Install, Uninstall, and Repair are built and acid-tested from the
-  start, so Company-Portal uninstalls actually work.
-- **Pre-flight checks** — encoding/BOM, AST parse, launcher acid-test per deployment type, and a v3
-  cmdlet scan before anything is packaged.
 - **First-run setup** — a one-time wizard persists machine config (paths, language, author) so
   conventions are configured once, in one place.
 - **Self-healing prerequisites** — auto-installs the PSAppDeployToolkit module from the PowerShell
   Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against their
   official sources. No manual provisioning, no roadblocks.
+- **Guided intake** — asks the blocker questions up front as clickable options, pre-filled with
+  researched defaults (app, latest version, installer type).
+- **Autonomous research** — checks the installed PSADT version against the latest release *and* whether
+  commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
+- **Scaffolding & customizing** — runs `New-ADTTemplate` and fills all three deployment types (Install,
+  Uninstall, Repair) from the start — acid-tested — so Company-Portal uninstalls actually work.
+- **Pre-flight checks** — encoding/BOM, AST parse, launcher acid-test per deployment type, and a v3
+  cmdlet scan before anything is packaged.
+- **Packaging to `.intunewin`** — packs with IntuneWinAppUtil to the central output folder and verifies
+  the package (correct `SetupFile`, size).
+- **App logo auto-fetch** — finds and downloads a license-clear logo (official vendor source or Wikimedia
+  Commons), as a transparent high-resolution PNG, and verifies the alpha channel before use.
+- **Deliverable dossier (HTML)** — produces the Intune metadata, return-code map, detection rule, and a
+  ready-to-paste HTML app description for the Company Portal.
+- **Guided testing & staged rollout** — DEV-VM cycles (silent, `.exe` launcher, SYSTEM context via
+  PsExec), an Intune test-group assignment, then pilot → staged production.
+- **Troubleshooting** — decodes Intune error/HRESULT codes (e.g. `0x80070001`), maps symptoms to root
+  causes, and triages the right logs (AppWorkload.log, PSADT session log).
+- **Start Menu only** — creates Start Menu entries and removes stray desktop icons; keeps the desktop clean.
 - **Optional direct Intune upload** *(planned — future release)* — will upload the `.intunewin` via
   Microsoft Graph with an app registration (client secret stored DPAPI-encrypted), and stay fully
   optional with a fallback to the manual dossier flow. **Not in the current version yet** — today you
   upload the generated `.intunewin` manually in the Intune Admin Center.
-- **Deliverable dossier** — produces the Intune metadata, return-code map, detection, and a ready-to-paste
-  app description, plus a transparent high-resolution logo.
 
 ## Requirements
 
