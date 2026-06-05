@@ -260,6 +260,33 @@ $ast.EndBlock.Statements | Where-Object { $_ -isnot [System.Management.Automatio
     ForEach-Object { "L$($_.Extent.StartLineNumber): $($_.GetType().Name)" }
 ```
 
+### 5.5 Automated SYSTEM test loop (opt-in, BEFORE packaging)
+
+Validate the package's Install/Uninstall scripts in a real **SYSTEM** context (mirroring the Intune
+Management Extension) BEFORE packing, so bugs are caught early. Runs on the package **source folder** (no
+`.intunewin` needed yet — fixes to the `.ps1` take effect on the next run, and you pack the validated
+scripts afterward). Requires an **elevated** PowerShell session.
+
+Only run when `test.systemTestEnabled` is true OR the user opts in for this package.
+
+**Hands:** `scripts/Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM (via the `Invoke-CommandAs`
+module, self-healed from PSGallery) and returns
+`{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated }`. It fixes
+nothing — YOU (the agent) drive the loop and apply fixes between runs.
+
+**Safety (this installs the REAL software on THIS machine as SYSTEM):**
+- Before the FIRST install, confirm via `AskUserQuestion` and recommend a VM/snapshot.
+- Hard cap `test.maxIterations` (default 5) — never loop forever.
+- After a green run, leave the machine in `test.endState` (default `uninstalled`, leftover-clean).
+- Keep each iteration's PSADT log in the output folder for an audit trail.
+
+**Loop (max `test.maxIterations`):**
+1. **Install:** `pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
+2. **Uninstall:** run with `-DeploymentType Uninstall`. Verify `DetectionState = not-installed` AND the leftover checks (services, scheduled tasks, app registry key, install dir, firewall rules; neighbour products of the same vendor still present). On failure: fix `Uninstall-ADTDeployment`, re-run.
+3. **Reinstall:** run `Install` again; verify installed. On failure: fix, re-run.
+4. **Converged** (all three green) → leave the machine per `test.endState`, then proceed to Packaging (Phase 6) with the validated scripts.
+5. **Cap reached** without convergence → STOP, present the diagnosis (last error, log tail, what was tried) and hand back to the user. Never loop forever.
+
 ### 6. Packaging with IntuneWinAppUtil
 
 **Tool path and version are config-driven** (`paths.intuneWinAppUtil`) and are provisioned and kept current by `scripts/Get-IntuneWinAppUtil.ps1` (the inline download below stays as a manual fallback).
@@ -364,7 +391,7 @@ On a DEV VM in this order. After each successful install comes the uninstall tes
 **Install cycle:**
 1. `.\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent` (smoke test)
 2. `.\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` (launcher acid test)
-3. `psexec -s cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"` (SYSTEM context; PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec)
+3. SYSTEM context: preferred is `scripts/Invoke-PsadtSystemTest.ps1` (uses the `Invoke-CommandAs` module, returns a structured result; see Phase 5.5 for the automated loop). Fallback: `psexec -s cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"` (PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec)
 
 **Uninstall cycle (on the same VM, app must be installed):**
 4. `.\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent`
