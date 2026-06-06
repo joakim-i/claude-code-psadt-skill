@@ -9,18 +9,20 @@ description: Use this skill when the user wants to build, package, test, trouble
 
 This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package** - from the first conversation to a tested, upload-ready `.intunewin`. It is intended for **build, packaging, test, troubleshooting, and deployment** (triggers include "PSADT paket bauen", "intune paket fuer <App>", "PSADT v4 deploy", or working in a folder that contains `Invoke-AppDeployToolkit.ps1`).
 
-**Workflow (9 phases):** 1) Intake (8 kill questions, ALWAYS via click options) - 2) Web research (PSADT version + command changes, silent/uninstall/repair of the app, Intune pitfalls) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing all three deployment types (Install/Uninstall/Repair) - 5) Pre-flight (encoding/parse/acid test) - 6) Packaging (IntuneWinAppUtil) - 7) Dossier + logo - 8) Test - 9) Rollout.
+**Workflow (10 phases):** 1) Intake (8 kill questions, ALWAYS via click options) - 2) Web research (PSADT version + command changes, silent/uninstall/repair of the app, Intune pitfalls) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing all three deployment types (Install/Uninstall/Repair) - 5) Pre-flight (encoding/parse/acid test) - 5.5) optional SYSTEM test loop - 6) Packaging (IntuneWinAppUtil) - 7) Dossier + REAL logo - 7.5) optional direct Intune upload via Graph (win32LobApp, coexistence-safe) - 8) Test - 9) Rollout.
 
 **Binding conventions (details in the block below):**
 - ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
 - Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ - the output root is configured by the user during setup (NO hard-coded default); read it from config via `Get-PsadtConfig`
 - Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
 - Author ALWAYS assembled from config (`author.person` + `author.company`, set during setup - no hard-coded default); first script version `0.1`; changelog in the `.NOTES` header is mandatory
-- Obtain app logo (PNG, transparent, high resolution) -> `Assets\` + `Output\<App>\`
+- Obtain the **REAL** app logo (PNG, high resolution) -> `Assets\` + `Output\<App>\` — NEVER the PSADT default `AppIcon.png`
 - Start Menu entries only, NO desktop icons
 - Build all three deployment types (Install/Uninstall/Repair) from the start and verify them via acid test
+- Direct Intune upload (Phase 7.5) is opt-in: **fill all objective app-info fields**, but NEVER auto-impose category / branded notes / featured / assignment, and NEVER delete an older version (new versions coexist for supersedence)
+- **Test before upload (BINDING):** Install + Uninstall must pass the Phase 5.5 SYSTEM test before any `.intunewin` is uploaded — never upload an untested package
 
-Per-topic depth in the reference guide `references/PSADTv4-Deployment-Guide.md` (appendices A-G).
+Per-topic depth in the reference guide `references/PSADTv4-Deployment-Guide.md` (appendices A-H).
 
 ---
 
@@ -32,8 +34,6 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 - **Reference**: The complete reference guide is at `references/PSADTv4-Deployment-Guide.md` - point to specific appendices (A-G) there when depth is needed, do NOT dump the whole guide into the conversation
 
 ## Conventions (BINDING)
-
-- **Always Windows PowerShell 5.1, never PowerShell 7:** All command invocations in this skill use `powershell` / `powershell.exe` (Windows PowerShell 5.1), **never** `pwsh` / `pwsh.exe` (PowerShell 7). Intune IME and SCCM execute packages under PS5.1; running build/test steps in PS7 can mask PS5.1 compatibility issues and produce false-green pre-flight results. This applies to all skill scripts, scaffold commands, pre-flight checks, and acid tests. The only exception is the agent's own internal tooling where PS7 is the shell — even then, any subprocess that touches PSADT must be spawned as `powershell.exe`.
 
 - **Language - split by target:**
   - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
@@ -55,17 +55,17 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 
 Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
-1. Run `powershell scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
+1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
 2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
    - **Languages**: `language.script` (EN), `language.dossier` (DE as default — but a config value, not fixed).
    - **Author**: `author.person`, `author.company`.
-   - **Intune upload** *(planned for a future version — NOT active in this version)*: mention that it is coming; do NOT ask for tenant/client ID/secret, do NOT set `intune.uploadEnabled`. For now the finished `.intunewin` is uploaded manually in the Admin Center.
+   - **Intune direct upload** *(ACTIVE — see Phase 7.5)*: optional. To enable it, the admin runs `pwsh scripts/New-PsadtEntraApp.ps1` **once** — it signs in interactively via **WAM** (the Windows Web Account Manager broker; falls back to device code only if WAM is unavailable), creates the `PSADT Intune Upload` Entra app, grants + admin-consents `DeviceManagementApps.ReadWrite.All`, creates a client secret, and writes `intune.tenantId/clientId/uploadEnabled` + DPAPI-stores the secret. Requires Global Admin or Privileged Role Admin. Manual portal route: `references/app-registration.md`. If the user does NOT want direct upload, skip this — the manual dossier-in-Admin-Center flow still works.
 3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` (in this version without `-Secret`).
 4. Provision prerequisites (never block the user):
-   - `powershell scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
-   - `powershell scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
-   - `powershell scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
+   - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
+   - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+   - `pwsh scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
 5. Re-triggerable at any time via "psadt setup" to change individual values.
 
 ### 1. Intake (right at the start, before anything else)
@@ -92,15 +92,10 @@ Optionally follow up depending on context via a further `AskUserQuestion` call: 
 After intake, without asking back, immediately run **three parallel research streams**:
 
 **a) Check PSADT version sync AND command changes:**
-
-> **Run as a temp file, not inline:** Multi-line `powershell -Command "..."` blocks silently fail on Windows. Always write the snippet to a temp `.ps1` and invoke with `powershell -NonInteractive -ExecutionPolicy Bypass -File <path>`.
-
 ```powershell
-# Save as e.g. $env:TEMP\psadt-ver.ps1 and run with -File
 $local = (Get-Module -ListAvailable -Name PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1).Version
 $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest'
 "local=$local latest=$($rel.tag_name)"
-$rel.body -split "`n" | Select-String -Pattern 'Break|renam|deprecat|remov|new.func' | Select-Object -First 15 | ForEach-Object { $_.Line }
 ```
 If divergent: inform the user + recommend `Update-Module PSAppDeployToolkit -Force` BEFORE scaffold.
 
@@ -198,7 +193,7 @@ Both must match.
 **For WinGet packages only** — provision the extension module into the package folder immediately after scaffold:
 ```powershell
 # Download module to tools/ (if not current) and copy into this package
-powershell scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
+pwsh scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
 # Verify
 (Import-PowerShellDataFile '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1').ModuleVersion
 ```
@@ -223,18 +218,15 @@ The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** i
 Mandatory before install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in silent, active in interactive). Then `Show-ADTInstallationProgress` for the welcome-replacement display.
 
 **Shortcuts - ONLY Start Menu, NEVER desktop:** If the app needs a shortcut, create exclusively a
-Start Menu entry for all users. **No desktop icons** (`$envCommonDesktop` / `$envUserDesktop`) — that clutters the desktop and is unwanted in the enterprise. If the installer creates a desktop icon on its own: remove it again specifically in post-install. In uninstall, clean up the Start Menu entry as well.
-
-Use `$envCommonStartMenuPrograms` **inside a deployment function** (e.g. `Install-ADTDeployment`), where it is guaranteed to be set by the PSADT session. **Never reference it at top-level script scope** (in the Variables section before `Open-ADTSession`): the session variable is `$null` there, so a path built from it is silently broken. If you need a top-level constant for the path, use the native Windows equivalent:
-```powershell
-# Safe at top level - does not depend on PSADT session state
-$startMenuDir = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\<App>"
-```
-The same restriction applies to all `$env*` PSADT session variables: `$envCommonDesktop`, `$envUserDesktop`, `$envProfilesDirectory`, `$envWinDir`, etc.
+Start Menu entry for all users (`$envCommonStartMenuPrograms`, e.g.
+`New-ADTShortcut -Path "$envCommonStartMenuPrograms\<App>\<App>.lnk" -TargetPath ...`). **No desktop icons**
+(`$envCommonDesktop` / `$envUserDesktop`) - that clutters the desktop and is unwanted in the enterprise.
+If the installer creates a desktop icon on its own: remove it again specifically in post-install
+(`Remove-Item "$envCommonDesktop\<App>.lnk"`). In uninstall, clean up the Start Menu entry as well.
 
 **4b. `Uninstall-ADTDeployment`** — values from intake question 7 (what goes, what stays):
 
-- MSI with known ProductCode: `Start-ADTMsiProcess -Action Uninstall -FilePath '{<ProductCode>}' -ArgumentList '/qn'`
+- MSI with known ProductCode: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<ProductCode>}' -ArgumentList '/qn'` (in PSADT 4.1.x a GUID MUST go to `-ProductCode`; `-FilePath` is validated as a real file path and throws `InvalidFilePathParameterValue` -> exit 60001)
 - MSI via DisplayName match (when ProductCode varies): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (not `Contains` - that accidentally removes neighboring products with a name prefix)
 - EXE with its own uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-from-registry>' -ArgumentList '<silent uninstall switches>'`
 - Squirrel: `Start-ADTProcess -FilePath "$env:LocalAppData\<app>\update.exe" -ArgumentList '--uninstall -s'`
@@ -254,7 +246,7 @@ Counter-example to warn about: NEVER do `Remove-Item 'HKLM:\SOFTWARE\<vendor>' -
 **4c. `Repair-ADTDeployment`** — values from intake question 8:
 
 - If intake says "not needed": leave the hook empty or abort with `Write-ADTLogEntry -Message 'Repair not supported - please use Uninstall + Install.'` + `throw`
-- MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again)
+- MSI: `Start-ADTMsiProcess -Action Repair -ProductCode '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again; a GUID goes to `-ProductCode`, NOT `-FilePath` - see Uninstall note above. The Repair block is a frequent miss: the Uninstall fix often gets applied but Repair still has `-FilePath`, which fails 60001 only when a repair is actually triggered.)
 - EXE wrapper without a dedicated repair mode: uninstall followed by install in the same hook; preserve user config if possible (backup-restore logic if needed)
 - Config-only repair: stop the service, copy the config files back from `SupportFiles\`, start the service - without reinstalling the app (faster, less invasive)
 - WinGet:
@@ -308,11 +300,13 @@ For WinGet packages, add:
 # Check 4: WinGet extension module present in package
 $moduleManifest = '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1'
 if (Test-Path $moduleManifest) {
-    "WinGet module: $((Import-PowerShellDataFile $moduleManifest).ModuleVersion) — OK"
+    "WinGet module: $((Import-PowerShellDataFile $moduleManifest).ModuleVersion) - OK"
 } else {
-    "WinGet module MISSING — run: powershell scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
+    "WinGet module MISSING - run: pwsh scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
 }
 ```
+
+**For WinGet packages, Check 3 WILL trigger a real installation — always use the test stub instead of skipping.** Skipping silently leaves scope bugs and path errors undetected. The stub replaces the deployment functions with a controlled exit and verifies the launcher finds and loads the script correctly without installing anything. See appendix C for the full stub pattern. After the stub passes, defer the live install/uninstall/repair verification to Phase 8 on a DEV VM.
 
 On an encoding bug (check 1 red or check 3 parse errors): replace em-dashes / smart quotes + UTF-8 BOM:
 ```powershell
@@ -323,9 +317,7 @@ $text = $text -replace [char]0x2014, '-' -replace [char]0x2013, '-' -replace [ch
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-**For WinGet packages, Check 3 WILL trigger a real installation — always use the test stub instead of skipping.** Skipping silently leaves scope bugs and path errors undetected. The stub replaces the deployment functions with a controlled exit and verifies the launcher finds and loads the script correctly without installing anything. See appendix C for the full stub pattern. After the stub passes, defer the live install/uninstall/repair verification to Phase 8 on a DEV VM.
-
-If check 3 is too dangerous for other reasons (real installer would run, licence key consumed, etc.): same rule — use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
+If check 3 is too dangerous because a real install would start: use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
 
 Additionally scan:
 ```powershell
@@ -347,7 +339,9 @@ Management Extension) BEFORE packing, so bugs are caught early. Runs on the pack
 `.intunewin` needed yet — fixes to the `.ps1` take effect on the next run, and you pack the validated
 scripts afterward). Requires an **elevated** PowerShell session.
 
-Only run when `test.systemTestEnabled` is true OR the user opts in for this package.
+Only run when `test.systemTestEnabled` is true OR the user opts in for this package. **This test is a BINDING
+prerequisite for the Phase 7.5 direct upload** — Install + Uninstall must pass here before any `.intunewin` is
+uploaded. Needs an elevated session; if you cannot run it, stop before the upload and hand the command back to the user.
 
 **Hands:** `scripts/Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM (via the `Invoke-CommandAs`
 module, self-healed from PSGallery) and returns
@@ -361,7 +355,7 @@ nothing — YOU (the agent) drive the loop and apply fixes between runs.
 - Keep each iteration's PSADT log in the output folder for an audit trail.
 
 **Loop (max `test.maxIterations`):**
-1. **Install:** `powershell scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
+1. **Install:** `pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
 2. **Uninstall:** run with `-DeploymentType Uninstall`. Verify `DetectionState = not-installed` AND the leftover checks (services, scheduled tasks, app registry key, install dir, firewall rules; neighbour products of the same vendor still present). On failure: fix `Uninstall-ADTDeployment`, re-run.
 3. **Reinstall:** run `Install` again; verify installed. On failure: fix, re-run.
 4. **Converged** (all three green) → leave the machine per `test.endState`, then proceed to Packaging (Phase 6) with the validated scripts.
@@ -417,11 +411,13 @@ Use appendix F from the reference guide as a template: ALWAYS name the file **`I
 
 The dossier language follows `language.dossier` (default German), and its umlauts stay (real ä, ö, ü, ß), because it is end-user output for the Company Portal.
 
-**Note: direct Graph upload is planned for a future skill version.** For now the user uploads the generated `.intunewin` manually in the Intune Admin Center.
+**Note: direct Graph upload is now AVAILABLE — see Phase 7.5.** The manual dossier-in-Admin-Center route remains the documented alternative.
 
 **Obtain the app logo automatically (mandatory):** Search for and download a suitable logo of the app - **PNG, transparent background, high resolution** (guideline >= 512px, more is better; square is best for the Company Portal tile). Place it under `<pkg>\Assets\<App>-Logo.png` AND a copy into `Output\<App>\`. Reference the filename in the logo row of the dossier.
+
+> **HARD RULE — never ship the PSADT default icon as the app logo.** The PSADT template ships `Assets\AppIcon.png` (a generic coloured ">" mark) and `Assets\Banner.Classic.png`. These are NOT the application's logo. Re-using `AppIcon.png` as the Company-Portal logo is a real mistake that has happened — it passes a naive "is it square + has alpha" check yet shows the wrong brand. ALWAYS download the REAL application logo (steps below). The direct-upload script (`Invoke-IntuneWin32Upload.ps1`) enforces this with a SHA256 blocklist of the known PSADT default asset(s) and refuses unless `-AllowDefaultLogo` is explicitly passed.
 - **Choose a license-clear source in this priority order:**
-  1. **Microsoft products first:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `powershell`, `sqlserver`, `azure`).
+  1. **Microsoft products:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `powershell`, `sqlserver`, `azure`).
   2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects).
   3. **Fallback:** Wikimedia Commons (stable URLs, SVG rendered server-side as a transparent PNG):
   ```powershell
@@ -431,7 +427,7 @@ The dossier language follows `language.dossier` (default German), and its umlaut
   Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
   ```
   Avoid third-party PNG portals (stickpng, toppng, nicepng ...) - hotlink protection/ads/questionable quality.
-  4. **MSI Icon table fallback (when web download fails):** MSI installers embed .ico files in an `Icon` table. Export via COM, read the raw ICO binary, and extract the largest frame directly as bytes (System.Drawing.Icon cannot decode PNG-compressed 256x256 frames embedded in .ico on .NET Framework 4.x - extract raw bytes instead):
+  4. **MSI Icon table fallback (when web download fails):** MSI installers embed .ico files in an `Icon` table. Export via COM, parse the raw ICO binary, and extract the largest frame directly (System.Drawing.Icon silently falls back to 48x48 when the 256x256 frame is PNG-compressed inside the .ico on .NET Framework 4.x — always parse the binary directly):
   ```powershell
   Add-Type -AssemblyName System.Drawing
   Add-Type -TypeDefinition @'
@@ -440,7 +436,7 @@ The dossier language follows `language.dossier` (default German), and its umlaut
       public static Bitmap FromDib32(byte[] dib, int width, int height) {
           int pixelDataSize = width * height * 4;
           var pixels = new byte[pixelDataSize];
-          Array.Copy(dib, 40, pixels, 0, pixelDataSize);  // skip 40-byte BITMAPINFOHEADER
+          Array.Copy(dib, 40, pixels, 0, pixelDataSize);
           var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
           var bd = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
           int rb = width * 4;
@@ -449,44 +445,34 @@ The dossier language follows `language.dossier` (default German), and its umlaut
       }
   }
   '@ -ReferencedAssemblies 'System.Drawing'
-
   $tmpDir = "$env:TEMP\MsiIconExport"; New-Item $tmpDir -ItemType Directory -Force | Out-Null
-  $type = [System.Type]::GetTypeFromProgID('WindowsInstaller.Installer')
-  $db   = [System.Activator]::CreateInstance($type).OpenDatabase('<path-to.msi>', 0)
+  $db = [System.Activator]::CreateInstance([System.Type]::GetTypeFromProgID('WindowsInstaller.Installer')).OpenDatabase('<path-to.msi>', 0)
   $db.Export('Icon', $tmpDir, 'Icon.idt')
-
-  # The Icon table binary streams export as <IconName>.ico.ibd in a subfolder named 'Icon'
+  # Streams export as <IconName>.ico.ibd in a subfolder named 'Icon'
   $icoPath = Get-ChildItem "$tmpDir\Icon" -Filter '*.ibd' | Sort-Object Length -Descending | Select-Object -ExpandProperty FullName -First 1
   $allBytes = [System.IO.File]::ReadAllBytes($icoPath)
-
-  # Find the largest frame in the ICO
-  $count = [BitConverter]::ToUInt16($allBytes, 4)
-  $bestW = 0; $bestOff = 0; $bestSize = 0
+  $count = [BitConverter]::ToUInt16($allBytes, 4); $bestW = 0; $bestOff = 0; $bestSize = 0
   for ($i = 0; $i -lt $count; $i++) {
-      $base = 6 + $i * 16
-      $w    = [int]$allBytes[$base]; if ($w -eq 0) { $w = 256 }
+      $base = 6 + $i * 16; $w = [int]$allBytes[$base]; if ($w -eq 0) { $w = 256 }
       if ($w -gt $bestW) { $bestW = $w; $bestOff = [BitConverter]::ToUInt32($allBytes, $base+12); $bestSize = [BitConverter]::ToUInt32($allBytes, $base+8) }
   }
   $frame = New-Object byte[] $bestSize; [Array]::Copy($allBytes, $bestOff, $frame, 0, $bestSize)
-
-  # Check if PNG-compressed (signature 0x89 0x50 0x4E 0x47)
   if ($frame[0] -eq 0x89 -and $frame[1] -eq 0x50) {
-      [System.IO.File]::WriteAllBytes('<output>.png', $frame)  # PNG frame: write directly
+      [System.IO.File]::WriteAllBytes('<output>.png', $frame)  # PNG-compressed frame: write directly
   } else {
-      # BMP DIB frame: decode with row-flip (bottom-up) and strip AND mask
       $biH = [Math]::Abs([BitConverter]::ToInt32($frame, 8)) / 2
       $bmp = [IcoDibReader]::FromDib32($frame, $bestW, [int]$biH)
       $bmp.Save('<output>.png', [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
   }
   Remove-Item $tmpDir -Recurse -Force
   ```
-  Note: `System.Drawing.Icon($path, 256, 256)` silently falls back to 48x48 when the 256x256 frame is PNG-compressed in the .ico - always parse the ICO binary directly for best results.
-- **Verify** (transparency + resolution) and show the user that it is the right logo:
+- **Verify** (resolution + ACTUAL transparency) AND visually confirm it is the right brand. `IsAlphaPixelFormat` only says the pixel *format* supports alpha — it returns True even for a fully opaque image (this misled a real session: a 7-Zip SVG rendered with an opaque black background still reported `Alpha=True`). Sample real corner pixels:
   ```powershell
   Add-Type -AssemblyName System.Drawing
-  $i=[System.Drawing.Image]::FromFile('<png>'); "{0}x{1} Alpha={2}" -f $i.Width,$i.Height,[System.Drawing.Image]::IsAlphaPixelFormat($i.PixelFormat); $i.Dispose()
+  $b=[System.Drawing.Bitmap]::FromFile('<png>')
+  $c=$b.GetPixel(0,0); "{0}x{1}  cornerAlpha={2} (0=transparent,255=opaque) RGB=({3},{4},{5})" -f $b.Width,$b.Height,$c.A,$c.R,$c.G,$c.B; $b.Dispose()
   ```
-  Alpha MUST be True (otherwise no transparent background -> look for another file). The logo is uploaded separately in Intune in the **App information tab**, it is NOT part of the `.intunewin` (no repack needed).
+  Then **actually look at the image** (open it / read it as an image) to confirm it is the app's brand, not the PSADT default. A transparent background (cornerAlpha=0) is preferred; an OPAQUE-but-correct logo is acceptable (square it on its own background colour for a clean tile). What is NOT acceptable is the wrong image. The logo is uploaded separately in Intune's **App information tab** (or by Phase 7.5), it is NOT part of the `.intunewin` (no repack needed).
 
 **App description ALWAYS in the dossier language with real umlauts (ä, ö, ü, ß)** - this is end-user text in the Company Portal, do NOT spell out ae/oe/ue. (Applies to the dossier/description output; the scripts stay English/ASCII - see conventions.)
 
@@ -521,7 +507,7 @@ Mandatory return codes that must always be included: `0 Success, 1707 Success, 3
 - Requirements table: add `Windows Package Manager (WinGet) >= 1.7.10582` — note that `Repair-ADTWinGetPackageManager` in the install hook self-heals this automatically.
 - Detection note: The PSAppDeployToolkit.WinGet module is bundled inside the `.intunewin` and extracted at install time only — it is **NOT** present on the device during Intune's detection phase. Detection must use registry or file checks only. Never use `Get-ADTWinGetPackage` in a detection script. Recommended template for WinGet-installed apps:
   ```powershell
-  # Detect-<AppName>.ps1 — registry-based, works regardless of ProductCode stability
+  # Detect-<AppName>.ps1 - registry-based, works regardless of ProductCode stability
   $regBases = @(
       'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
       'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
@@ -536,6 +522,50 @@ Mandatory return codes that must always be included: `0 Success, 1707 Success, 3
   exit 1
   ```
   For apps whose WinGet manifest includes a stable `ProductCode`, use the direct GUID key (`HKLM:\...\Uninstall\{<ProductCode>}`) — faster and more reliable than a DisplayName scan.
+
+### 7.5 Direct Intune upload via Microsoft Graph (opt-in)
+
+Push the finished `.intunewin` straight to Intune as a **win32LobApp** (app + logo, **NO group assignment**) instead of copy-pasting the dossier. Self-contained raw Graph - no third-party module. Enabled by Phase 0's `New-PsadtEntraApp.ps1` bootstrap (`intune.uploadEnabled = true`). Manual dossier upload stays the alternative.
+
+> **BINDING PREREQUISITE — test before you upload.** NEVER upload a package whose **Install AND Uninstall**
+> have not been validated. Run the **Phase 5.5 SYSTEM test** (`Invoke-PsadtSystemTest.ps1`: Install -> verify
+> detection -> Uninstall -> verify clean -> Reinstall) and get it GREEN first; fix the package and re-test on
+> any failure. The SYSTEM test needs an **elevated** session (and installs the real software — use a VM/snapshot).
+> If you cannot run it (no elevation, no VM), **STOP before `-Execute` and hand back to the user** with the exact
+> test command — do not upload an untested package.
+
+**Scripts:** `scripts/Get-GraphToken.ps1` (app-only client-credentials token; DPAPI secret decrypted in-memory only) and `scripts/Invoke-IntuneWin32Upload.ps1` (the orchestrator: parse `.intunewin` -> token -> permission probe -> idempotency -> build body -> create/update -> content version -> file -> SAS -> block-blob upload -> commit -> activate -> categories -> supersedence).
+
+**Flow:** ALWAYS dry-run first (read-only) -> show the user the summary + the `On -Execute` action -> confirm via `AskUserQuestion` -> run with `-Execute`. Example:
+```powershell
+& scripts/Invoke-IntuneWin32Upload.ps1 -IntuneWinPath '<out>\<App>\Invoke-AppDeployToolkit.intunewin' `
+  -DisplayName '<App>' -Description $markdownDesc -Publisher '<vendor>' -Developer '<vendor>' `
+  -AppVersion '<ver>' -MsiProductCode '{<GUID>}' -Architecture x64 -MinWindowsRelease 1607 `
+  -LogoPath '<out>\<App>\<App>-Logo.png'            # add -Execute to actually upload
+```
+
+**Detection — pick the right rule for the installer type:**
+- **MSI-backed app** (has a ProductCode): `-MsiProductCode '{<GUID>}'` (builds a `win32LobAppProductCodeRule`).
+- **EXE / non-MSI app** (Vivaldi, Chrome-style, NSIS, Squirrel, ...): `-DetectionScriptPath '<out>\<App>\Detect-<App>.ps1'`
+  (builds a `win32LobAppPowerShellScriptRule`, ruleType=detection). The detect script follows the classic
+  contract: write to stdout + `exit 0` when installed, no stdout when not. Add `-DetectionRunAs32Bit` only if needed.
+  A **detection** script rule accepts ONLY `enforceSignatureCheck`, `runAs32Bit`, `scriptContent` — Graph
+  rejects `displayName`/`runAsAccount`/`operationType`/`operator`/`comparisonValue` on detection rules (guide Appendix H.2).
+
+**Fill as many fields as possible — not the minimum.** The user expects a complete *App information* tab, not three fields. Map the dossier metadata onto: `displayName, description (Markdown), publisher, developer, owner, displayVersion, informationUrl, privacyInformationUrl, notes, largeIcon, msiInformation (productCode+productVersion for MSI), returnCodes, rules (detection), installExperience`. Empty fields are a defect to fix, not the norm.
+
+**But NEVER auto-impose user/organisation choices:**
+- **No company branding in `notes` by default** (e.g. "Managed by <company>"). Leave it empty, or let it come from config `intune.notes` - never hard-coded. The user/org decides.
+- **No category by default.** `-Categories` defaults to empty; users assign categories themselves. Only pass `-Categories` if the user explicitly asks.
+- **No featured flag, no group assignment** - deliberate human actions.
+
+**Versioning / coexistence (CRITICAL — never delete an older version):** Uploading a new version must NOT remove the existing one. The script issues only POST/PATCH, **never DELETE**. Default `-OnExisting CreateNewCoexist` creates a NEW, separate app and leaves the existing version(s) fully intact, so you can configure **supersedence** and keep a rollback target. Use `-UpdateAppId <id>` only when the user explicitly wants in-place content replacement of one app (keeps its id/assignments). Wire supersedence with `-SupersedesAppId <oldId>` (new *replaces* old; old retained, not deleted) or in the portal. The dry-run prints the exact `On -Execute` action - show it before confirming.
+
+**Beta endpoint:** the orchestrator uses `graph.microsoft.com/beta` - the v1.0 Intune app-metadata backend silently DROPS several win32LobApp write properties (most visibly `displayVersion`). See guide Appendix H.
+
+**Logo guard:** the script refuses the PSADT default `AppIcon.png` (SHA256 blocklist) unless `-AllowDefaultLogo`. Always pass the REAL downloaded logo (Phase 7).
+
+Per-detail depth + the hard-won Graph gotchas: **guide Appendix H**. Then feed into the Phase 8 test-group step (assign to 1 test device).
 
 ### 8. Test sequence (BEFORE production rollout) — all three deployment types
 
@@ -585,6 +615,13 @@ On user reports, check in this order:
 | App stuck on "Installing" in Company Portal | IME state cache or process hangs | Appendix A.2 cleanup sequence |
 | `0x80070002` | Launcher does not find the .ps1 | `-s` during packaging was wrong |
 | Detection failed after successful install | Detection script bug (contract violation, 32/64-bit registry) | Manually on target: `.\Detect-*.ps1; $LASTEXITCODE` |
+| SYSTEM test: `New-ScheduledJobOption`/`PSScheduledJob` could not be loaded; every step `ExitCode=0 Success=False not-installed` | Running `Invoke-PsadtSystemTest.ps1` under pwsh 7 - PSScheduledJob (used by Invoke-CommandAs) is WinPS-5.1-only, blocked in Core | Re-run under `powershell.exe` 5.1; the harness now self-re-execs to 5.1 (guide Appendix G 2026-06-05 #1) |
+| `60001` (`InvalidFilePathParameterValue,Start-ADTMsiProcess`) on Uninstall/Repair | ProductCode GUID passed to `-FilePath` instead of `-ProductCode` (PSADT 4.1.x) | Use `-ProductCode '{<GUID>}'`; verify `(Get-Command Start-ADTMsiProcess).Parameters.Keys` (guide Appendix G 2026-06-05 #2) |
+| Upload create fails `BadRequest: must have at least one detection rule specified` (rule WAS sent) | New Intune backend wants the unified `rules` collection (`win32LobAppProductCodeRule`, `ruleType=detection`), NOT legacy `detectionRules` | Use `rules`; put `@odata.type` first (ordered) (guide Appendix H) |
+| Upload `uploadState=commitFileFailed` after blocks uploaded "OK" | Binary corruption: `Invoke-RestMethod -Body <byte[]>` re-encodes the blob | Upload via `HttpClient`/`ByteArrayContent` (raw bytes) (guide Appendix H) |
+| `displayVersion` (App Version) empty after upload despite being sent | v1.0 app-metadata backend drops it | Use `graph.microsoft.com/beta` for the write (guide Appendix H) |
+| Upload `403` on the read-only probe / create | App consent missing/ineffective | Re-run `New-PsadtEntraApp.ps1`; verify `DeviceManagementApps.ReadWrite.All` admin-consented |
+| Upload create fails `The <X> property may not be set for Win32LobAppPowerShellScriptRule ... used for app detection` | A detection script rule carries requirement-only props | Keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent` (guide Appendix H.2) |
 
 HRESULT conversion: Intune shows unknown positive exit codes as `0x80070000 + code`. So `0x80070001` = exit 1 = script did not run at all. Always recompute, don't be misled by the "ERROR_INVALID_FUNCTION" text.
 
@@ -596,9 +633,8 @@ Check logs in this order:
 ## Anti-patterns (never do)
 
 - v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...)
-- Em-dash/smart quote **anywhere in the script file** — this means in comments too, not just in double-quoted strings. All generated script text must be 7-bit ASCII only. Use `-` (hyphen) never `—` (U+2014) or `–` (U+2013). This is the single most common encoding failure and always requires at least two extra pre-flight runs to find and fix.
+- Em-dash/smart quote **anywhere in the script file** — this means in comments too, not just in double-quoted strings. All generated script text must be 7-bit ASCII only. Use `-` (hyphen) never U+2014 (em-dash) or U+2013 (en-dash). This is the single most common encoding failure and always requires at least two extra pre-flight runs to find and fix.
 - Saving UTF-8 without BOM when non-ASCII is present
-- Referencing PSADT session variables (`$envCommonStartMenuPrograms`, `$envCommonDesktop`, `$envProfilesDirectory`, …) at top-level script scope in the Variables section — they are `$null` there because `Open-ADTSession` has not run yet. Use `$env:ProgramData`, `$env:SystemRoot`, etc. at the top level, or define the derived paths inside the deployment functions.
 - Top-level code outside try/catch
 - `-o` inside `-c` for IntuneWinAppUtil
 - Not mapping return codes 60001/60008 as Failed
@@ -614,7 +650,20 @@ Check logs in this order:
 - `-Scope User` in WinGet Intune deployments — Intune SYSTEM context has no mounted user hive; always use `-Scope Machine`
 - Skipping `Repair-ADTWinGetPackageManager` before `Install-ADTWinGetPackage` — WinGet may be absent or outdated on managed devices; always self-heal first
 - Mixing `Install-ADTWinGetPackage` with `Start-ADTProcess`/`Start-ADTMsiProcess` in the same deployment type hook — use one installation paradigm per hook
-- Using bare WinGet cmdlet names without the `ADT` prefix (`Install-WinGetPackage`, `Repair-WinGetPackageManager`, `Assert-WinGetPackageManager`, …) — those are the non-PSADT cmdlets and bypass logging, error handling, and the PSADT session; always use the `*-ADTWinGet*` versions from the extension module
+- Using bare WinGet cmdlet names without the `ADT` prefix (`Install-WinGetPackage`, `Repair-WinGetPackageManager`, `Assert-WinGetPackageManager`, ...) — those are the non-PSADT cmdlets and bypass logging, error handling, and the PSADT session; always use the `*-ADTWinGet*` versions from the extension module
+- Passing a ProductCode GUID to `Start-ADTMsiProcess -FilePath` (Uninstall AND Repair) - it must be `-ProductCode`; the Repair block is the one most often left wrong
+- **Uploading the PSADT default `Assets\AppIcon.png` (or Banner) as the app logo** - always the REAL downloaded application logo; the upload script blocks the default by hash
+- Trusting `IsAlphaPixelFormat` alone for "transparent" - it is True for opaque images too; sample a real corner pixel AND look at the image
+- Using the legacy `detectionRules`/`requirementRules` for a new win32LobApp on the current backend - use the unified `rules` collection; never both at once
+- For a non-MSI app, forcing an MSI ProductCode rule (there is none) - use a PowerShell-script detection rule (`-DetectionScriptPath`)
+- Setting `displayName`/`runAsAccount`/`operationType`/`operator`/`comparisonValue` on a *detection* script rule - Graph rejects them (valid only on *requirement* script rules)
+- Serialising a polymorphic Graph object with `@odata.type` NOT first - use `[ordered]@{}` so the subtype binds (else "no detection rule")
+- Uploading the encrypted blob with `Invoke-RestMethod -Body <byte[]>` - it corrupts binary; use `HttpClient`/`ByteArrayContent`
+- Writing win32LobApp metadata on `/v1.0` and wondering why `displayVersion` is empty - use `/beta`
+- **Deleting / overwriting the older version when uploading a new one** - new versions COEXIST (separate app, `-OnExisting CreateNewCoexist`); never DELETE; let the user wire supersedence
+- Putting company branding in `notes`, or auto-assigning a category/featured/group - those are user/org decisions (config-driven at most), never script defaults
+- Filling only the minimum app-info fields - populate every objective field (publisher, developer, owner, version, info/privacy URL, description, logo)
+- **Uploading a package whose Install + Uninstall were not tested** - the Phase 5.5 SYSTEM test (install -> uninstall -> reinstall, green) is a BINDING prerequisite for Phase 7.5; if you can't run it, STOP and hand back to the user, never upload untested
 
 ## Reference lookup
 
@@ -630,3 +679,4 @@ For depth on every topic: `references/PSADTv4-Deployment-Guide.md`
 - Appendix E: Final deploy checklist
 - Appendix F: Complete Intune upload dossier template (all fields, all tabs)
 - Appendix G: Lessons from the Oracle XE project
+- Appendix H: Direct Intune upload via Graph - win32LobApp create, the `rules` collection, beta vs v1.0, HttpClient block-blob upload, EncryptionInfo relay, coexistence/supersedence, metadata completeness, logo guard, WAM bootstrap

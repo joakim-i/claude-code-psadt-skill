@@ -2,7 +2,10 @@ BeforeAll {
     . "$PSScriptRoot/_helpers.ps1"
     Import-Module PowerShellGet -ErrorAction SilentlyContinue
     function Invoke-CommandAs { param([switch]$AsSystem, $ScriptBlock, $ArgumentList) }  # stub so Mock can bind
+    # Test the in-process logic on any host: bypass the pwsh7 -> WinPS 5.1 re-exec (real runs never set this).
+    $env:PSADT_SYSTEMTEST_NOREEXEC = '1'
 }
+AfterAll { Remove-Item Env:\PSADT_SYSTEMTEST_NOREEXEC -ErrorAction SilentlyContinue }
 Describe 'Invoke-PsadtSystemTest' {
     BeforeEach {
         $script:root   = New-TempSkillRoot
