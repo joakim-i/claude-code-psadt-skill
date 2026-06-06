@@ -85,10 +85,11 @@ $Scopes = 'Application.ReadWrite.All AppRoleAssignment.ReadWrite.All offline_acc
 $GraphBase = 'https://graph.microsoft.com/v1.0'
 
 # WAM (Windows broker) is the preferred interactive sign-in; device code is the fallback.
-# MSAL wants fully-qualified scopes (openid/profile/offline_access are added automatically).
+# offline_access must be included explicitly - MSAL does NOT add OIDC scopes automatically for WAM.
 $WamScopes = @(
     'https://graph.microsoft.com/Application.ReadWrite.All'
     'https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All'
+    'offline_access'
 )
 # Pinned, known-good MSAL.NET broker package set (auto-located or downloaded once).
 # Abstractions is a transitive dependency of the client and must be loaded alongside it.
