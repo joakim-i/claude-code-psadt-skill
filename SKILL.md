@@ -33,6 +33,8 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 
 ## Conventions (BINDING)
 
+- **Always Windows PowerShell 5.1, never PowerShell 7:** All command invocations in this skill use `powershell` / `powershell.exe` (Windows PowerShell 5.1), **never** `pwsh` / `pwsh.exe` (PowerShell 7). Intune IME and SCCM execute packages under PS5.1; running build/test steps in PS7 can mask PS5.1 compatibility issues and produce false-green pre-flight results. This applies to all skill scripts, scaffold commands, pre-flight checks, and acid tests. The only exception is the agent's own internal tooling where PS7 is the shell — even then, any subprocess that touches PSADT must be spawned as `powershell.exe`.
+
 - **Language - split by target:**
   - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
   - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
@@ -53,7 +55,7 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 
 Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
-1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
+1. Run `powershell scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
 2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
    - **Languages**: `language.script` (EN), `language.dossier` (DE as default — but a config value, not fixed).
@@ -61,9 +63,9 @@ Before anything else happens: make sure the skill is configured and the prerequi
    - **Intune upload** *(planned for a future version — NOT active in this version)*: mention that it is coming; do NOT ask for tenant/client ID/secret, do NOT set `intune.uploadEnabled`. For now the finished `.intunewin` is uploaded manually in the Admin Center.
 3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` (in this version without `-Secret`).
 4. Provision prerequisites (never block the user):
-   - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
-   - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
-   - `pwsh scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
+   - `powershell scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
+   - `powershell scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+   - `powershell scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
 5. Re-triggerable at any time via "psadt setup" to change individual values.
 
 ### 1. Intake (right at the start, before anything else)
@@ -90,10 +92,15 @@ Optionally follow up depending on context via a further `AskUserQuestion` call: 
 After intake, without asking back, immediately run **three parallel research streams**:
 
 **a) Check PSADT version sync AND command changes:**
+
+> **Run as a temp file, not inline:** Multi-line `powershell -Command "..."` blocks silently fail on Windows. Always write the snippet to a temp `.ps1` and invoke with `powershell -NonInteractive -ExecutionPolicy Bypass -File <path>`.
+
 ```powershell
+# Save as e.g. $env:TEMP\psadt-ver.ps1 and run with -File
 $local = (Get-Module -ListAvailable -Name PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1).Version
 $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest'
 "local=$local latest=$($rel.tag_name)"
+$rel.body -split "`n" | Select-String -Pattern 'Break|renam|deprecat|remov|new.func' | Select-Object -First 15 | ForEach-Object { $_.Line }
 ```
 If divergent: inform the user + recommend `Update-Module PSAppDeployToolkit -Force` BEFORE scaffold.
 
@@ -119,16 +126,31 @@ Show the finding to the user (which commands are new/changed/deprecated and what
 Record per deployment type: switch, expected exit codes, log path, known leftovers.
 
 **b-WinGet) Package discovery (replaces stream b when installer type = WinGet):**
-```powershell
-# Verify the package ID exists and show available versions
-Find-ADTWinGetPackage -Id '<PackageId>' | Format-List Id, Name, Version, Source
-# If the ID is uncertain, search by display name
-Find-ADTWinGetPackage -Name '<AppName>' | Select-Object Id, Name, Version
-```
-If package not found: stop and ask the user to correct the ID — do NOT scaffold with an invalid ID.
 
-Research the WinGet manifest for detection hints (ProductCode, installer type, known file paths):
+> **Module import required:** `Find-ADTWinGetPackage` comes from PSAppDeployToolkit.WinGet. Import it explicitly before calling:
+> ```powershell
+> Import-Module 'C:\Users\<user>\.claude\skills\psadt-deploy\tools\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1' -ErrorAction SilentlyContinue
+> ```
+> (The skill's `tools/` path is in config under `paths.intuneWinAppUtil`'s parent — adjust if the skill root differs.)
+
+> **Always search by name first** when the exact ID is not already known with certainty. WinGet IDs follow `Publisher.AppName` dot-notation where each word is its own segment — `Microsoft.Sysinternals.Suite`, NOT `Microsoft.SysinternalsSuite`. Guessing the concatenated form wastes a lookup.
+
+```powershell
+# Step 1: Search by display name to discover the exact ID
+Find-ADTWinGetPackage -Name '<AppName>' | Select-Object Id, Name, Version, Source | Format-Table -AutoSize
+
+# Step 2: Confirm the chosen ID exists and show full details
+Find-ADTWinGetPackage -Id '<ConfirmedPackageId>' | Format-List Id, Name, Version, Source
+```
+
+**Fallback if WinGet/module is not available on the build machine:** look up the package ID at https://winstall.app/ (web UI over the winget-pkgs repo). This is a last resort — `Find-ADTWinGetPackage` is always preferred because it confirms the ID resolves at runtime on this machine.
+
+If package not found after both steps: stop and ask the user to correct the ID — do NOT scaffold with an invalid ID.
+
+Research the WinGet manifest for detection hints (ProductCode, installer type, known exe names, install path):
 `https://github.com/microsoft/winget-pkgs/tree/master/manifests/<first-letter>/<publisher>/<app>/<version>/`
+
+For WinGet **portable** packages: the manifest's `InstallerType: portable` means WinGet places files under `%ProgramFiles%\WinGet\Packages\<Id>_<Arch>\` and creates shims in `%ProgramFiles%\WinGet\Links\`. The exact exe names inside the Links folder come from the manifest — check the `.yaml` before coding them into shortcut lists. Always guard shortcut creation with `if (Test-Path $exePath)` so a wrong name logs a warning rather than failing the deployment.
 
 Add to stream c for WinGet packages: `"<AppName>" winget intune deployment known issues`.
 
@@ -176,7 +198,7 @@ Both must match.
 **For WinGet packages only** — provision the extension module into the package folder immediately after scaffold:
 ```powershell
 # Download module to tools/ (if not current) and copy into this package
-pwsh scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
+powershell scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
 # Verify
 (Import-PowerShellDataFile '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1').ModuleVersion
 ```
@@ -201,11 +223,14 @@ The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** i
 Mandatory before install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in silent, active in interactive). Then `Show-ADTInstallationProgress` for the welcome-replacement display.
 
 **Shortcuts - ONLY Start Menu, NEVER desktop:** If the app needs a shortcut, create exclusively a
-Start Menu entry for all users (`$envCommonStartMenuPrograms`, e.g.
-`New-ADTShortcut -Path "$envCommonStartMenuPrograms\<App>\<App>.lnk" -TargetPath ...`). **No desktop icons**
-(`$envCommonDesktop` / `$envUserDesktop`) - that clutters the desktop and is unwanted in the enterprise.
-If the installer creates a desktop icon on its own: remove it again specifically in post-install
-(`Remove-Item "$envCommonDesktop\<App>.lnk"`). In uninstall, clean up the Start Menu entry as well.
+Start Menu entry for all users. **No desktop icons** (`$envCommonDesktop` / `$envUserDesktop`) — that clutters the desktop and is unwanted in the enterprise. If the installer creates a desktop icon on its own: remove it again specifically in post-install. In uninstall, clean up the Start Menu entry as well.
+
+Use `$envCommonStartMenuPrograms` **inside a deployment function** (e.g. `Install-ADTDeployment`), where it is guaranteed to be set by the PSADT session. **Never reference it at top-level script scope** (in the Variables section before `Open-ADTSession`): the session variable is `$null` there, so a path built from it is silently broken. If you need a top-level constant for the path, use the native Windows equivalent:
+```powershell
+# Safe at top level - does not depend on PSADT session state
+$startMenuDir = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\<App>"
+```
+The same restriction applies to all `$env*` PSADT session variables: `$envCommonDesktop`, `$envUserDesktop`, `$envProfilesDirectory`, `$envWinDir`, etc.
 
 **4b. `Uninstall-ADTDeployment`** — values from intake question 7 (what goes, what stays):
 
@@ -285,7 +310,7 @@ $moduleManifest = '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd
 if (Test-Path $moduleManifest) {
     "WinGet module: $((Import-PowerShellDataFile $moduleManifest).ModuleVersion) — OK"
 } else {
-    "WinGet module MISSING — run: pwsh scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
+    "WinGet module MISSING — run: powershell scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
 }
 ```
 
@@ -298,7 +323,9 @@ $text = $text -replace [char]0x2014, '-' -replace [char]0x2013, '-' -replace [ch
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-If check 3 is too dangerous because a real install would start: use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
+**For WinGet packages, Check 3 WILL trigger a real installation — always use the test stub instead of skipping.** Skipping silently leaves scope bugs and path errors undetected. The stub replaces the deployment functions with a controlled exit and verifies the launcher finds and loads the script correctly without installing anything. See appendix C for the full stub pattern. After the stub passes, defer the live install/uninstall/repair verification to Phase 8 on a DEV VM.
+
+If check 3 is too dangerous for other reasons (real installer would run, licence key consumed, etc.): same rule — use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
 
 Additionally scan:
 ```powershell
@@ -334,7 +361,7 @@ nothing — YOU (the agent) drive the loop and apply fixes between runs.
 - Keep each iteration's PSADT log in the output folder for an audit trail.
 
 **Loop (max `test.maxIterations`):**
-1. **Install:** `pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
+1. **Install:** `powershell scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
 2. **Uninstall:** run with `-DeploymentType Uninstall`. Verify `DetectionState = not-installed` AND the leftover checks (services, scheduled tasks, app registry key, install dir, firewall rules; neighbour products of the same vendor still present). On failure: fix `Uninstall-ADTDeployment`, re-run.
 3. **Reinstall:** run `Install` again; verify installed. On failure: fix, re-run.
 4. **Converged** (all three green) → leave the machine per `test.endState`, then proceed to Packaging (Phase 6) with the validated scripts.
@@ -393,7 +420,10 @@ The dossier language follows `language.dossier` (default German), and its umlaut
 **Note: direct Graph upload is planned for a future skill version.** For now the user uploads the generated `.intunewin` manually in the Intune Admin Center.
 
 **Obtain the app logo automatically (mandatory):** Search for and download a suitable logo of the app - **PNG, transparent background, high resolution** (guideline >= 512px, more is better; square is best for the Company Portal tile). Place it under `<pkg>\Assets\<App>-Logo.png` AND a copy into `Output\<App>\`. Reference the filename in the logo row of the dossier.
-- **Choose a license-clear source:** first the official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects), otherwise **Wikimedia Commons** (stable URLs, SVG is rendered server-side as a transparent PNG):
+- **Choose a license-clear source in this priority order:**
+  1. **Microsoft products first:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `sysinternals`, `powershell`, `sqlserver`).
+  2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects).
+  3. **Fallback:** Wikimedia Commons (stable URLs, SVG rendered server-side as a transparent PNG):
   ```powershell
   # Wikimedia: SVG -> transparent PNG at the desired width (here 1024)
   $api = "https://commons.wikimedia.org/w/api.php?action=query&titles=$([uri]::EscapeDataString('File:<Logo>.svg'))&prop=imageinfo&iiprop=url&iiurlwidth=1024&format=json"
@@ -516,8 +546,9 @@ Check logs in this order:
 ## Anti-patterns (never do)
 
 - v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...)
-- Em-dash/smart quote in double-quoted strings
+- Em-dash/smart quote **anywhere in the script file** — this means in comments too, not just in double-quoted strings. All generated script text must be 7-bit ASCII only. Use `-` (hyphen) never `—` (U+2014) or `–` (U+2013). This is the single most common encoding failure and always requires at least two extra pre-flight runs to find and fix.
 - Saving UTF-8 without BOM when non-ASCII is present
+- Referencing PSADT session variables (`$envCommonStartMenuPrograms`, `$envCommonDesktop`, `$envProfilesDirectory`, …) at top-level script scope in the Variables section — they are `$null` there because `Open-ADTSession` has not run yet. Use `$env:ProgramData`, `$env:SystemRoot`, etc. at the top level, or define the derived paths inside the deployment functions.
 - Top-level code outside try/catch
 - `-o` inside `-c` for IntuneWinAppUtil
 - Not mapping return codes 60001/60008 as Failed
