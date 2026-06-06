@@ -3,9 +3,13 @@
     One-time bootstrap of the Entra app registration used for direct Intune upload.
 
 .DESCRIPTION
-    Runs interactively (device-code sign-in, no third-party module) against Microsoft Graph and, in a
-    single pass:
-      1. signs the admin in via the well-known "Microsoft Graph Command Line Tools" public client,
+    Runs interactively against Microsoft Graph and, in a single pass:
+      1. signs the admin in via the well-known "Microsoft Graph Command Line Tools" public client.
+         By default it uses WAM (the Windows Web Account Manager broker) so the native Windows sign-in
+         window appears and SSO / a Primary Refresh Token can be reused - no code to type on a phone.
+         WAM needs the MSAL.NET broker assemblies; the script auto-locates them (global NuGet cache /
+         downloaded once to %LOCALAPPDATA%\PsadtIntune\msal). If WAM cannot run (non-Windows, no broker,
+         MSAL unavailable) it falls back to the device-code flow. Force device code with -UseDeviceCode.
       2. creates the app registration "PSADT Intune Upload" + its service principal,
       3. grants the application permission DeviceManagementApps.ReadWrite.All and admin-consents it
          (the appRoleAssignment IS the consent - no separate portal click),
@@ -33,6 +37,10 @@
     If an app named "PSADT Intune Upload" already exists, reuse it without prompting (a fresh secret is
     still created).
 
+.PARAMETER UseDeviceCode
+    Skip WAM and sign in with the device-code flow instead. Useful on machines without the Windows broker
+    (e.g. some Server Core / non-interactive hosts) or to avoid the one-time MSAL download.
+
 .OUTPUTS
     PSCustomObject: TenantId, ClientId, AppObjectId, ConsentGranted(bool), SecretExpires(datetime), ConfigPath.
 
@@ -46,7 +54,8 @@ param(
     [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent),
     [string]$TenantId = 'organizations',
     [ValidateRange(1, 24)][int]$SecretValidMonths = 12,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$UseDeviceCode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,6 +67,17 @@ $GraphResourceAppId = '00000003-0000-0000-c000-000000000000'  # Microsoft Graph
 $RequiredAppRole = 'DeviceManagementApps.ReadWrite.All'
 $Scopes = 'Application.ReadWrite.All AppRoleAssignment.ReadWrite.All offline_access openid profile'
 $GraphBase = 'https://graph.microsoft.com/v1.0'
+
+# WAM (Windows broker) is the preferred interactive sign-in; device code is the fallback.
+# MSAL wants fully-qualified scopes (openid/profile/offline_access are added automatically).
+$WamScopes = @(
+    'https://graph.microsoft.com/Application.ReadWrite.All'
+    'https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All'
+)
+# Pinned, known-good MSAL.NET broker package set (auto-located or downloaded once).
+# Abstractions is a transitive dependency of the client and must be loaded alongside it.
+$MsalVersions = @{ Client = '4.66.2'; Broker = '4.66.2'; Native = '0.16.2'; Abstractions = '6.35.0' }
+$MsalCacheRoot = Join-Path $env:LOCALAPPDATA 'PsadtIntune\msal'
 
 # --- Console UX helpers ------------------------------------------------------------------------------
 $script:step = 0
@@ -137,6 +157,134 @@ function Get-DeviceCodeToken([string]$Tenant, [string]$Scope) {
     throw "Timed out waiting for sign-in."
 }
 
+# --- WAM (Windows broker) sign-in via MSAL.NET -------------------------------------------------------
+# Acquire the MSAL broker assemblies: prefer the global NuGet cache, otherwise download the pinned
+# .nupkg once from nuget.org and extract it into the local cache. A .nupkg is just a zip.
+function Save-NuGetPackage {
+    param([string]$Id, [string]$Version, [string]$DestDir)
+    $idl = $Id.ToLower(); $verl = $Version.ToLower()
+    $url = "https://api.nuget.org/v3-flatcontainer/$idl/$verl/$idl.$verl.nupkg"
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "$idl.$verl.nupkg"
+    Write-Info "downloading $Id $Version ..."
+    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $DestDir) { Remove-Item $DestDir -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($tmp, $DestDir)
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+}
+
+function Get-PackageDir {
+    param([string]$Id, [string]$Version, [string]$LocalRoot)
+    $global = Join-Path $env:USERPROFILE ".nuget\packages\$Id\$Version"
+    if (Test-Path $global) { return $global }
+    $local = Join-Path $LocalRoot "$Id\$Version"
+    if ((Test-Path $local) -and (Get-ChildItem $local -ErrorAction SilentlyContinue)) { return $local }
+    Save-NuGetPackage -Id $Id -Version $Version -DestDir $local
+    return $local
+}
+
+$script:MsalReady = $false
+function Initialize-MsalBroker {
+    param([hashtable]$Versions, [string]$CacheRoot)
+    if ($script:MsalReady) { return $true }
+    if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        throw "WAM is only available on Windows."
+    }
+    $isCore = $PSVersionTable.PSEdition -eq 'Core'
+    $clientTfm = if ($isCore) { 'net6.0' }        else { 'net462' }
+    $brokerTfm = if ($isCore) { 'netstandard2.0' } else { 'net462' }
+    $nativeTfm = if ($isCore) { 'netstandard2.0' } else { 'net461' }
+    $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
+        'Arm64' { 'win-arm64' } 'X86' { 'win-x86' } default { 'win-x64' }
+    }
+
+    # Reuse a 4.66.x client already in the global cache (avoids a download) before falling back to pinned.
+    $clientVer = $Versions.Client
+    $cb = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.identity.client"
+    if (-not (Test-Path (Join-Path $cb $clientVer)) -and (Test-Path $cb)) {
+        $newer = Get-ChildItem $cb -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '4.66.*' -and (Test-Path (Join-Path $_.FullName "lib\$clientTfm\Microsoft.Identity.Client.dll")) } |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+        if ($newer) { $clientVer = $newer.Name }
+    }
+
+    $abstrDll  = Join-Path (Get-PackageDir 'microsoft.identitymodel.abstractions'    $Versions.Abstractions $CacheRoot) "lib\$clientTfm\Microsoft.IdentityModel.Abstractions.dll"
+    $clientDll = Join-Path (Get-PackageDir 'microsoft.identity.client'              $clientVer        $CacheRoot) "lib\$clientTfm\Microsoft.Identity.Client.dll"
+    $brokerDll = Join-Path (Get-PackageDir 'microsoft.identity.client.broker'       $Versions.Broker  $CacheRoot) "lib\$brokerTfm\Microsoft.Identity.Client.Broker.dll"
+    $nativePkg =           (Get-PackageDir 'microsoft.identity.client.nativeinterop' $Versions.Native  $CacheRoot)
+    $nativeMgr = Join-Path $nativePkg "lib\$nativeTfm\Microsoft.Identity.Client.NativeInterop.dll"
+    $nativeRun = Join-Path $nativePkg "runtimes\$arch\native"
+
+    foreach ($f in @($abstrDll, $clientDll, $brokerDll, $nativeMgr)) {
+        if (-not (Test-Path $f)) { throw "MSAL assembly not found: $f" }
+    }
+    if (-not (Test-Path $nativeRun)) { throw "MSAL native runtime folder not found: $nativeRun" }
+
+    # Stage the native broker dll into a private folder on PATH (never mutate the shared NuGet cache).
+    $runDir = Join-Path $CacheRoot "native\$arch"
+    New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+    Get-ChildItem $nativeRun -Filter 'msalruntime*.dll' | ForEach-Object {
+        Copy-Item $_.FullName (Join-Path $runDir $_.Name) -Force
+    }
+    if (-not (Test-Path (Join-Path $runDir 'msalruntime.dll'))) {
+        $alt = Get-ChildItem $runDir -Filter 'msalruntime*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($alt) { Copy-Item $alt.FullName (Join-Path $runDir 'msalruntime.dll') -Force }
+    }
+    if ($env:PATH -notlike "*$runDir*") { $env:PATH = "$runDir;$env:PATH" }
+
+    [System.Reflection.Assembly]::LoadFrom($abstrDll)  | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($clientDll) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($nativeMgr) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($brokerDll) | Out-Null
+
+    if (-not ([System.Management.Automation.PSTypeName]'PsadtNative.Win').Type) {
+        Add-Type -Namespace PsadtNative -Name Win -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")]   public static extern System.IntPtr GetForegroundWindow();
+'@
+    }
+
+    $script:MsalReady = $true
+    return $true
+}
+
+function Get-WamToken {
+    param([string]$Tenant, [string[]]$GraphScopes, [string]$ClientId)
+    $authority = "https://login.microsoftonline.com/$Tenant"
+    $builder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ClientId).WithAuthority($authority)
+    $bo = New-Object 'Microsoft.Identity.Client.BrokerOptions' -ArgumentList ([Microsoft.Identity.Client.BrokerOptions+OperatingSystems]::Windows)
+    $builder = [Microsoft.Identity.Client.Broker.BrokerExtension]::WithBroker($builder, $bo)
+    $pca = $builder.Build()
+
+    $hwnd = [PsadtNative.Win]::GetConsoleWindow()
+    if ($hwnd -eq [System.IntPtr]::Zero) { $hwnd = [PsadtNative.Win]::GetForegroundWindow() }
+
+    Write-Host "    A Windows sign-in window (Web Account Manager) will open ..." -ForegroundColor Gray
+    $req = $pca.AcquireTokenInteractive([string[]]$GraphScopes)
+    $req = $req.WithParentActivityOrWindow($hwnd)
+    $req = $req.WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount)
+    $result = $req.ExecuteAsync().GetAwaiter().GetResult()
+
+    # Shape the result like the device-code token so downstream code is unchanged.
+    return [pscustomobject]@{ access_token = $result.AccessToken }
+}
+
+# Pick WAM, fall back to device code. Returns an object exposing .access_token (a Graph JWT).
+function Get-AdminToken {
+    if (-not $UseDeviceCode) {
+        try {
+            Initialize-MsalBroker -Versions $MsalVersions -CacheRoot $MsalCacheRoot | Out-Null
+            Write-Info "Sign-in method: WAM (Windows Web Account Manager)."
+            return Get-WamToken -Tenant $TenantId -GraphScopes $WamScopes -ClientId $DeviceCodeClientId
+        } catch {
+            Write-Warn2 "WAM sign-in unavailable: $($_.Exception.Message)"
+            Write-Info  "Falling back to device-code sign-in."
+        }
+    }
+    Write-Info "Sign-in method: device code."
+    return Get-DeviceCodeToken -Tenant $TenantId -Scope $Scopes
+}
+
 # --- Retry wrapper for replication lag (new SP not yet visible) --------------------------------------
 function Invoke-WithRetry([scriptblock]$Action, [int]$Tries = 6, [int]$DelaySec = 5) {
     for ($i = 1; $i -le $Tries; $i++) {
@@ -157,8 +305,8 @@ Write-Host "Creates the app registration '$AppDisplayName' and configures direct
 Write-Host "You must sign in as Global Administrator or Privileged Role Administrator." -ForegroundColor Gray
 
 # 1. Sign in -------------------------------------------------------------------------------------------
-Write-Step "Sign in (device code)"
-$tok = Get-DeviceCodeToken -Tenant $TenantId -Scope $Scopes
+Write-Step "Sign in"
+$tok = Get-AdminToken
 $claims = ConvertFrom-JwtPayload $tok.access_token
 $realTenant = $claims.tid
 $who = if ($claims.preferred_username) { $claims.preferred_username } elseif ($claims.upn) { $claims.upn } else { '(unknown)' }

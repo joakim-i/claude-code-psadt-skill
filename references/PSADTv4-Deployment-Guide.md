@@ -485,7 +485,7 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
 - Name / Version / Publisher: matches `$adtSession.AppName / AppVersion / AppVendor`
 - Description: Markdown-capable, the first paragraph readable standalone (~200 characters are the short preview in the Company Portal)
 - Category: choose it semantically correct (Development, Productivity, ...)
-- Logo: `<pkg>\Assets\AppIcon.png`, 256x256 PNG transparent
+- Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=256x256 PNG
 
 ### 5.2 Program
 - **Install command**: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`
@@ -838,7 +838,7 @@ Place this template as a full HTML file per app next to the `.intunewin` (`Intun
 | **Developer** | `<Hersteller-Kurzname>` | usually == Publisher |
 | **Owner** | `<internes-Team>` | internal service owner (e.g. "Workplace-Services") |
 | **Notes** | `PSADT 4.1.8 v<N> - pkg rev <NN> - YYYY-MM-DD` | package metadata for later troubleshooting |
-| **Logo** | `<pkg>\Assets\AppIcon.png` | 256x256 PNG transparent |
+| **Logo** | `<pkg>\Assets\<App>-Logo.png` (REAL app logo, NOT the PSADT default `AppIcon.png`) | >=256x256 PNG |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
 ### F.2 Description Markdown template (Company Portal)
@@ -1017,7 +1017,7 @@ Before the `Create`, go through all tabs. After `Create`: Intune does not sync i
 | Developer | Oracle |
 | Owner | Workplace-Services |
 | Notes | PSADT v4.1.8 Wrapper v2 - Paketversion 02 - 2026-04-22 |
-| Logo | `Assets/AppIcon.png` |
+| Logo | `Assets/OracleXE-Logo.png` (real downloaded Oracle logo, NOT the PSADT default `AppIcon.png`) |
 | Install command | `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` |
 | Uninstall command | `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` |
 | Install behavior | System |
@@ -1057,3 +1057,66 @@ These lessons come from concrete packaging projects and apply to PSADT v4 Intune
 5. **The acid test is `Invoke-AppDeployToolkit.exe`, not `.ps1` directly**. The launcher exe uses `powershell.exe -Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"` - a different encoding path than `.\script.ps1`. Encoding bugs only show up here.
 
 6. **Avoid a wrong param-block diagnosis**: at one point I changed `$SuppressRebootPassThru` to `$AllowRebootPassThru` - v3 thinking applied to a v4 script. The launcher does NOT automatically pass reboot switches; the parameter name in v4.x is `$SuppressRebootPassThru`. The reference is ALWAYS the template under `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1`.
+
+### 2026-06-05 - 7-Zip package (MSI, automated SYSTEM test loop)
+
+1. **SYSTEM test loop dies under PowerShell 7 - `New-ScheduledJobOption` / PSScheduledJob cannot load**: running `Invoke-PsadtSystemTest.ps1` (which calls `Invoke-CommandAs -AsSystem`) from **pwsh 7** failed on every action with `The 'New-ScheduledJobOption' command was found in the module 'PSScheduledJob', but the module could not be loaded`. The launcher never actually ran as SYSTEM, so every step came back `ExitCode=0 Success=False Detection=not-installed` (deceptive: exit 0 but nothing happened). **Cause**: `Invoke-CommandAs -AsSystem` schedules its work via the **`PSScheduledJob`** module (`New-ScheduledJobOption`, `Register-ScheduledJob`). `PSScheduledJob` is a **Windows PowerShell 5.1-only** module and is **blocked** from loading under PowerShell 7 (Core) by the `WindowsPowerShellCompatibilityModuleDenyList`. Under WinPS 5.1 the same calls work natively. (Tell-tale: PS7 renders errors in ConciseView with `Line |` + `~~~~` underlines; WinPS 5.1 uses the older NormalView - the error format alone reveals which host you are in.) **Fix**: `Invoke-PsadtSystemTest.ps1` now detects `$PSVersionTable.PSEdition -eq 'Core'` and transparently **re-execs itself under `...\WindowsPowerShell\v1.0\powershell.exe` (5.1)**, marshalling the structured result back via a temp JSON file (UTF-8 **no BOM**, so `ConvertFrom-Json` reads it cleanly). **General lesson**: any helper that relies on `Invoke-CommandAs`/`PSScheduledJob`/`Register-ScheduledJob` (scheduled-job-backed "run as SYSTEM" tricks) is **WinPS-5.1-only** - never assume it works in pwsh 7. Either force the 5.1 host or use a native `Register-ScheduledTask` (CIM) SYSTEM principal. Gotcha when re-execing via `powershell.exe -File`: **`[int[]]` array parameters do NOT bind** (only the first value binds, the rest become stray positional args -> "no positional parameter accepts ...") - marshal arrays as a CSV string and split inside the child.
+
+2. **`Start-ADTMsiProcess -Action Uninstall -FilePath '{GUID}'` -> exit 60001 (`InvalidFilePathParameterValue`)**: once the SYSTEM loop actually ran, Install was green but Uninstall failed with `FullyQualifiedErrorId : InvalidFilePathParameterValue,Start-ADTMsiProcess` (exit 60001, app stayed installed). **Cause**: in **PSADT 4.1.x** `Start-ADTMsiProcess` split the target into two parameters - `-FilePath` is now validated as a **real .msi file path**, and a **ProductCode GUID must be passed via the dedicated `-ProductCode` parameter**. Older v4.0 patterns (and earlier versions of this skill's own examples) used `-FilePath '{<ProductCode>}'`, which now throws. **Fix**: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<GUID>}'` (same for `-Action Repair`). **General lesson**: this is exactly the "newer PSADT version changed a command" trap from Phase 2 - verify cmdlet parameters against the **installed** module (`(Get-Command Start-ADTMsiProcess).Parameters.Keys`) instead of trusting a remembered pattern; `-ProductCode` for GUIDs, `-FilePath` for actual files.
+
+---
+
+## Appendix H: Direct Intune upload via Microsoft Graph (win32LobApp) - hard-won lessons
+
+Captured 2026-06-06 while implementing `scripts/Get-GraphToken.ps1` + `scripts/Invoke-IntuneWin32Upload.ps1` and uploading the 7-Zip package to a live tenant. All endpoints verified against the live Graph catalog (msgraph skill) and a real upload.
+
+### H.0 Auth & bootstrap
+- **Bootstrap (`New-PsadtEntraApp.ps1`) uses WAM** (Windows Web Account Manager broker) for the interactive admin sign-in, falling back to device code only if WAM is unavailable. WAM needs the MSAL.NET broker assemblies (`Microsoft.Identity.Client` + `.Broker` + `.NativeInterop` + native `msalruntime.dll`) - the script auto-locates them in the global NuGet cache or downloads a pinned set to `%LOCALAPPDATA%\PsadtIntune\msal`. **Pitfall:** `BrokerOptions` lives in namespace `Microsoft.Identity.Client` (NOT `Microsoft.Identity.Client.Broker`); `WithBroker` is the static `[Microsoft.Identity.Client.Broker.BrokerExtension]::WithBroker($builder,$opts)`. Also load the transitive `Microsoft.IdentityModel.Abstractions` or `WithAuthority` throws "Could not load file or assembly".
+- **Uploads use app-only client credentials** (`Get-GraphToken.ps1`): scope `https://graph.microsoft.com/.default`, the DPAPI secret decrypted **in-memory only** (`SecureStringToBSTR` -> `PtrToStringBSTR` -> `ZeroFreeBSTR`), never logged.
+
+### H.1 Use `/beta`, not `/v1.0`
+The current Intune app-metadata backend (`StatelessAppMetadataFEService`, api-version 2025-07-02) on `/v1.0` **silently drops several win32LobApp write properties** - most visibly `displayVersion` (the portal "App Version" stays empty even after a PATCH that returns 200). The **same call on `/beta` persists them**. Do all win32LobApp metadata writes on `/beta`.
+
+### H.2 Detection: the unified `rules` collection, NOT `detectionRules`
+`win32LobApp` exposes BOTH `detectionRules` (legacy `win32LobAppDetection`) and `rules` (unified `win32LobAppRule`). The current backend **ignores `detectionRules`** and rejects the create with `BadRequest: The Win32LobApp must have at least one detection rule specified` even though a perfectly valid `detectionRules` array was sent. Use `rules` with a `ruleType`:
+```powershell
+rules = @([ordered]@{
+  '@odata.type'          = '#microsoft.graph.win32LobAppProductCodeRule'  # MUST be first (see H.3)
+  ruleType               = 'detection'
+  productCode            = '{<GUID>}'
+  productVersionOperator = 'notConfigured'
+  productVersion         = $null
+})
+```
+Never send both `rules` and `detectionRules`/`requirementRules` together.
+
+### H.3 `@odata.type` must serialise FIRST
+For every polymorphic Graph sub-object (detection rule, `mimeContent` logo, `msiInformation`, supersedence relationship) build it with `[ordered]@{}` so `@odata.type` is the first key. A plain `@{}` hashtable serialises keys in an arbitrary order; when `@odata.type` lands later, the backend fails to bind the subtype and behaves as if the object were missing (this is a second cause of the "no detection rule" error).
+
+### H.4 Content upload: relay EncryptionInfo, never re-encrypt
+`IntuneWinAppUtil` already AES-encrypts the payload. The `.intunewin` is a ZIP containing `IntuneWinPackage/Contents/IntunePackage.intunewin` (the **already-encrypted** blob) and `IntuneWinPackage/Metadata/Detection.xml` (the `EncryptionInfo` + `UnencryptedContentSize` + `SetupFile`). Upload the inner blob verbatim and relay its `EncryptionInfo` to the `commit` call as `fileEncryptionInfo`. **Do NOT recompute** anything: `EncryptionInfo.FileDigest` is the SHA256 of the **plaintext** (not the ciphertext) - a local SHA256 of the encrypted blob will NOT match it, and that is correct/expected. Register the file with `size = UnencryptedContentSize` and `sizeEncrypted = (encrypted blob length)`.
+
+### H.5 Block-blob upload MUST use HttpClient (binary fidelity)
+Uploading the encrypted blob to the Azure SAS URI with `Invoke-RestMethod -Method Put -Body $bytes` **corrupts the binary** (it re-encodes the byte[]), so the blocks report "OK" but the later `commit` returns `uploadState=commitFileFailed` (MAC/digest mismatch on the decrypted content). Use raw bytes via `HttpClient`/`ByteArrayContent`:
+```powershell
+$client = [System.Net.Http.HttpClient]::new()
+$req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Put, "$sas&comp=block&blockid=$enc")
+$req.Content = [System.Net.Http.ByteArrayContent]::new($chunk)        # raw bytes, exact
+$client.SendAsync($req).GetAwaiter().GetResult()
+```
+~4-6 MB blocks, base64 block ids of fixed width, then `PUT &comp=blocklist` with `<BlockList><Latest>..</Latest></BlockList>`. Do NOT add `x-ms-blob-type` to Put Block (only relevant to single Put Blob). Renew the SAS via `.../files/{id}/renewUpload` on long uploads. All poll loops (`azureStorageUriRequestSuccess`, `commitFileSuccess`) need timeout caps.
+
+### H.6 Content sub-path needs the type-cast segment
+After `/deviceAppManagement/mobileApps/{id}`, the content endpoints require the cast `/microsoft.graph.win32LobApp` before `contentVersions`: `.../mobileApps/{id}/microsoft.graph.win32LobApp/contentVersions/{cv}/files/{f}/...`. The 8 steps: create app -> contentVersion -> file (size+sizeEncrypted) -> poll SAS -> block upload -> commit(fileEncryptionInfo) -> poll -> PATCH `committedContentVersion`.
+
+### H.7 Categories are a `$ref` relationship; supersedence is a relationship
+`categories` is NOT a settable property. Resolve names from `/deviceAppManagement/mobileAppCategories`, then `POST .../mobileApps/{id}/categories/$ref` with `{ '@odata.id': '<base>/mobileAppCategories/<catId>' }`. Supersedence: `POST .../mobileApps/{newId}/relationships` with `{ '@odata.type':'#microsoft.graph.mobileAppSupersedence', supersedenceType:'replace', targetId:'<oldId>' }`.
+
+### H.8 Coexistence & versioning (NEVER delete an older version)
+Uploading a new version must **not** remove the existing one. `Invoke-IntuneWin32Upload.ps1` issues **only POST/PATCH, never DELETE**. Default `-OnExisting CreateNewCoexist` creates a NEW, separate app and leaves existing same-name version(s) fully intact, so supersedence can be wired and a rollback target remains. `-UpdateAppId <id>` is the explicit in-place path (replaces one app's content, keeps id/assignments). `-SupersedesAppId <oldId>` wires "new replaces old" (old retained). Same `displayName` for multiple versions is fine - they are distinct apps differentiated by `displayVersion`.
+
+### H.9 Metadata completeness & boundaries
+**Fill every objective field** - empty App-information tabs are a defect: `displayName, description (Markdown), publisher, developer, owner, displayVersion, informationUrl, privacyInformationUrl, notes, largeIcon, msiInformation (productCode+productVersion for MSI), returnCodes, rules, installExperience`. **But never auto-impose user/org choices**: no company branding in `notes` by default (empty, or config `intune.notes`), no category (`-Categories` empty by default - users assign categories themselves), no featured flag, no group assignment.
+
+### H.10 Logo guard
+The Company-Portal logo must be the REAL application logo. The PSADT template's `Assets\AppIcon.png` (generic coloured ">" mark) is NOT it - re-using it is a real mistake that slipped past a naive "square + alpha" check. The script keeps a SHA256 blocklist of PSADT default assets and refuses them unless `-AllowDefaultLogo`. When verifying a downloaded logo, `IsAlphaPixelFormat` is True even for opaque images - sample a real corner pixel and visually confirm the brand. An opaque-but-correct logo is acceptable (square it on its own background colour); the WRONG image is not.

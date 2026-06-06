@@ -2,7 +2,22 @@
 
 - **Date:** 2026-06-05
 - **Branch:** `intune-dev-upload`
-- **Status:** Approved design, ready for implementation planning
+- **Status:** IMPLEMENTED (2026-06-06) and verified against a live tenant. See `CHANGELOG.md` 0.3.0 and
+  reference guide **Appendix H** for the as-built behaviour and the Graph gotchas discovered during
+  implementation. Deltas from this design (kept here for history):
+  - **Auth (bootstrap):** uses **WAM** (Windows broker) with device-code fallback — not device-code-only.
+  - **Detection:** the live backend requires the unified **`rules`** collection (`win32LobAppProductCodeRule`),
+    not the legacy `detectionRules` named in §4.4/§4.5.
+  - **API version:** metadata is written on **`/beta`** (v1.0 silently drops `displayVersion` et al.).
+  - **Content upload:** **HttpClient/ByteArrayContent** (raw bytes) — `Invoke-RestMethod -Body <byte[]>`
+    corrupts the blob and fails the commit.
+  - **Script consolidation:** `Test-PsadtSetup.ps1` and `New-IntuneWin32AppBody.ps1` were folded **into**
+    `Invoke-IntuneWin32Upload.ps1` (the read-only probe + body-builder run inline) rather than shipped as
+    separate scripts. `Get-GraphToken.ps1` ships as designed.
+  - **Coexistence:** new versions create a **separate** app by default (`-OnExisting CreateNewCoexist`); the
+    script **never deletes**; optional `-SupersedesAppId` wiring added.
+  - **Metadata completeness + boundaries:** fills the full App-information tab; never auto-assigns
+    category/branded-notes/featured/groups. **Logo guard** added (refuses the PSADT default icon).
 - **Skill:** `psadt-deploy` (PSADT v4.x → Intune Win32 lifecycle)
 
 ## 1. Goal
