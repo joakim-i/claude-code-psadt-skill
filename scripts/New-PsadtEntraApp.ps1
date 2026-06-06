@@ -160,13 +160,16 @@ function Get-DeviceCodeToken([string]$Tenant, [string]$Scope) {
                 device_code = $dc.device_code
             } -ErrorAction Stop
         } catch {
+            # OAuth token endpoint errors return { "error": "<string>", "error_description": "..." }
+            # so Get-GraphError returns the string directly (not a .code/.message object).
             $e = Get-GraphError $_
-            switch ($e.error) {
-                'authorization_pending' { continue }
-                'slow_down'             { $interval += 5; continue }
+            $eCode = if ($e -is [string]) { $e } else { [string]$e.error }
+            switch ($eCode) {
+                'authorization_pending'  { continue }
+                'slow_down'              { $interval += 5; continue }
                 'authorization_declined' { throw "Sign-in was declined in the browser." }
-                'expired_token'         { throw "The device code expired before sign-in completed. Re-run the script." }
-                default                 { if ($e.code -eq 'Unknown' -and $e.message -match 'pending') { continue }; throw $e.message }
+                'expired_token'          { throw "The device code expired before sign-in completed. Re-run the script." }
+                default                  { if ($eCode -match 'pending') { continue }; throw ($e | Out-String) }
             }
         }
     }
