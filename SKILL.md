@@ -63,6 +63,7 @@ Before anything else happens: make sure the skill is configured and the prerequi
 4. Provision prerequisites (never block the user):
    - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
    - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+   - `pwsh scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
 5. Re-triggerable at any time via "psadt setup" to change individual values.
 
 ### 1. Intake (right at the start, before anything else)
@@ -73,8 +74,9 @@ Ask the **8 kill questions exclusively via the `AskUserQuestion` tool** (clickab
 
 The 8 substantive questions that must be covered (spread across the two calls):
 1. **App + exact version** - options: detected/latest version (recommended), known previous version(s), from context.
-2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, other.
-3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime.
+2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, WinGet package, other.
+   - If **WinGet selected**: inject a follow-up `AskUserQuestion` before Q3 covering: Package ID (e.g. `Valve.Steam`, `Microsoft.PowerShell` — user provides or Phase 2b confirms), scope (`Machine` recommended — required for Intune SYSTEM context), version (`Latest` recommended vs pinned). Then **skip Q3** — WinGet packages have no local installer to source.
+3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime. *(Skip for WinGet — Package ID is the source; see Q2 above.)*
 4. **Target audience** - options: Required on devices, Available in Company Portal, both; pull in AAD groups as free text if needed.
 5. **Special config** - options: none (recommended default if nothing is known), registry keys, XML/JSON/settings file, license key, service account, branding (multiSelect: true makes sense).
 6. **Reboot behavior** - options: never (recommended), recommended (3010), forced (1641).
@@ -115,6 +117,20 @@ Show the finding to the user (which commands are new/changed/deprecated and what
 - Official vendor docs first, then silentinstallhq.com, then community (Reddit r/Intune, PSADT Discourse)
 
 Record per deployment type: switch, expected exit codes, log path, known leftovers.
+
+**b-WinGet) Package discovery (replaces stream b when installer type = WinGet):**
+```powershell
+# Verify the package ID exists and show available versions
+Find-ADTWinGetPackage -Id '<PackageId>' | Format-List Id, Name, Version, Source
+# If the ID is uncertain, search by display name
+Find-ADTWinGetPackage -Name '<AppName>' | Select-Object Id, Name, Version
+```
+If package not found: stop and ask the user to correct the ID — do NOT scaffold with an invalid ID.
+
+Research the WinGet manifest for detection hints (ProductCode, installer type, known file paths):
+`https://github.com/microsoft/winget-pkgs/tree/master/manifests/<first-letter>/<publisher>/<app>/<version>/`
+
+Add to stream c for WinGet packages: `"<AppName>" winget intune deployment known issues`.
 
 **c) Known Intune pitfalls:**
 - Query: `"<AppName>" intune win32 known issues`
@@ -157,6 +173,15 @@ Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersio
 ```
 Both must match.
 
+**For WinGet packages only** — provision the extension module into the package folder immediately after scaffold:
+```powershell
+# Download module to tools/ (if not current) and copy into this package
+pwsh scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
+# Verify
+(Import-PowerShellDataFile '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1').ModuleVersion
+```
+PSADT's extension auto-loader discovers `PSAppDeployToolkit.WinGet\` by folder-name match and imports it automatically — no `Import-Module` in the deployment script. The `Files\` folder remains empty for WinGet packages (nothing to bundle). Set `AppVersion = 'Latest'` in `$adtSession` (or `'<pinned>'` if a fixed version was requested); read `AppArch` from the WinGet manifest installer type.
+
 ### 4. Script customizing — all three deployment types
 
 The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** in `Invoke-AppDeployToolkit.ps1`: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Even if only install is needed today: later user uninstalls via Company Portal only work with a filled uninstall block.
@@ -167,6 +192,11 @@ The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** i
 - EXE wrapper: `Start-ADTProcess -FilePath "$($adtSession.DirFiles)\<setup>.exe" -ArgumentList '<researched silent switches>' -SuccessExitCodes @(0, 3010, 1641)`
 - InstallShield with `setup.exe /s /f1"<response>.iss"`: response file in `SupportFiles\`
 - Squirrel (`<app>-<ver>-full.nupkg`-based .exe): often `/silent /quiet`
+- WinGet:
+  ```powershell
+  Repair-ADTWinGetPackageManager                                        # self-heal WinGet before every operation
+  Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent # add -Version '<ver>' if pinned
+  ```
 
 Mandatory before install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in silent, active in interactive). Then `Show-ADTInstallationProgress` for the welcome-replacement display.
 
@@ -183,6 +213,7 @@ If the installer creates a desktop icon on its own: remove it again specifically
 - MSI via DisplayName match (when ProductCode varies): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (not `Contains` - that accidentally removes neighboring products with a name prefix)
 - EXE with its own uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-from-registry>' -ArgumentList '<silent uninstall switches>'`
 - Squirrel: `Start-ADTProcess -FilePath "$env:LocalAppData\<app>\update.exe" -ArgumentList '--uninstall -s'`
+- WinGet: `Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent`
 
 Post-uninstall cleanup (based on intake question 7):
 - `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60` (not `-Silent` - uninstalls should be allowed to kill processes)
@@ -201,6 +232,17 @@ Counter-example to warn about: NEVER do `Remove-Item 'HKLM:\SOFTWARE\<vendor>' -
 - MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again)
 - EXE wrapper without a dedicated repair mode: uninstall followed by install in the same hook; preserve user config if possible (backup-restore logic if needed)
 - Config-only repair: stop the service, copy the config files back from `SupportFiles\`, start the service - without reinstalling the app (faster, less invasive)
+- WinGet:
+  ```powershell
+  try {
+      Repair-ADTWinGetPackage -Id '<WinGetId>'
+  } catch {
+      Write-ADTLogEntry -Message "WinGet repair not supported; performing uninstall + reinstall."
+      Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent
+      Repair-ADTWinGetPackageManager
+      Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent
+  }
+  ```
 
 **Custom helpers** ALWAYS in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1`, never in the main script.
 
@@ -236,6 +278,17 @@ foreach ($dt in 'Install','Uninstall','Repair') {
 
 If one of the three types turns red: that is NOT ok even if install is green. Otherwise the Company Portal user gets 0x80070001 when clicking uninstall.
 
+For WinGet packages, add:
+```powershell
+# Check 4: WinGet extension module present in package
+$moduleManifest = '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1'
+if (Test-Path $moduleManifest) {
+    "WinGet module: $((Import-PowerShellDataFile $moduleManifest).ModuleVersion) — OK"
+} else {
+    "WinGet module MISSING — run: pwsh scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
+}
+```
+
 On an encoding bug (check 1 red or check 3 parse errors): replace em-dashes / smart quotes + UTF-8 BOM:
 ```powershell
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
@@ -249,8 +302,8 @@ If check 3 is too dangerous because a real install would start: use the test stu
 
 Additionally scan:
 ```powershell
-# v3 leftovers
-$v3 = 'Execute-Process','Execute-MSI','Write-Log','Show-InstallationWelcome','Show-InstallationProgress','Show-InstallationPrompt','Get-InstalledApplication','Remove-MSIApplications','Refresh-Desktop','Update-GroupPolicy','Block-AppExecution'
+# v3 leftovers (+ WinGet wrong-prefix guard)
+$v3 = 'Execute-Process','Execute-MSI','Write-Log','Show-InstallationWelcome','Show-InstallationProgress','Show-InstallationPrompt','Get-InstalledApplication','Remove-MSIApplications','Refresh-Desktop','Update-GroupPolicy','Block-AppExecution','Assert-WinGetPackageManager','Get-WinGetPackage','Install-WinGetPackage','Uninstall-WinGetPackage','Repair-WinGetPackage','Repair-WinGetPackageManager'
 $t = [System.IO.File]::ReadAllText($s)
 foreach ($fn in $v3) { $m = [regex]::Matches($t, "\b$fn\b"); if ($m.Count) { "V3_FOUND: $fn ($($m.Count)x)" } }
 
@@ -384,6 +437,26 @@ More info: [Vendor page](https://...)
 
 Mandatory return codes that must always be included: `0 Success, 1707 Success, 3010 Soft reboot, 1641 Hard reboot, 1618 Retry, 60001 Failed, 60008 Failed` + installer-specific codes from the research.
 
+**For WinGet packages — additional dossier requirements:**
+- Requirements table: add `Windows Package Manager (WinGet) >= 1.7.10582` — note that `Repair-ADTWinGetPackageManager` in the install hook self-heals this automatically.
+- Detection note: The PSAppDeployToolkit.WinGet module is bundled inside the `.intunewin` and extracted at install time only — it is **NOT** present on the device during Intune's detection phase. Detection must use registry or file checks only. Never use `Get-ADTWinGetPackage` in a detection script. Recommended template for WinGet-installed apps:
+  ```powershell
+  # Detect-<AppName>.ps1 — registry-based, works regardless of ProductCode stability
+  $regBases = @(
+      'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  )
+  foreach ($base in $regBases) {
+      $match = Get-ChildItem $base -ErrorAction SilentlyContinue |
+          Get-ItemProperty |
+          Where-Object { $_.DisplayName -like '<AppName>*' } |
+          Select-Object -First 1
+      if ($match) { Write-Output "Detected: $($match.DisplayName) $($match.DisplayVersion)"; exit 0 }
+  }
+  exit 1
+  ```
+  For apps whose WinGet manifest includes a stable `ProductCode`, use the direct GUID key (`HKLM:\...\Uninstall\{<ProductCode>}`) — faster and more reliable than a DisplayName scan.
+
 ### 8. Test sequence (BEFORE production rollout) — all three deployment types
 
 On a DEV VM in this order. After each successful install comes the uninstall test on **the same VM** (not a new VM) - so that uninstall actually has something to clean up.
@@ -456,6 +529,11 @@ Check logs in this order:
 - Triggering fallback delete actions on the first negative async response (services need 30-60s after msiexec, build a retry loop)
 - Creating desktop icons (or leaving ones created by the installer) - Start Menu entries only, keep the desktop clean
 - Recognizing a newer PSADT version only by its number and adopting it blindly - always check the release notes/changelog for changed/deprecated commands
+- Using `Get-ADTWinGetPackage` in a detection script — the WinGet module lives inside `.intunewin` and is not present on the device at detection time; use registry or file detection only
+- `-Scope User` in WinGet Intune deployments — Intune SYSTEM context has no mounted user hive; always use `-Scope Machine`
+- Skipping `Repair-ADTWinGetPackageManager` before `Install-ADTWinGetPackage` — WinGet may be absent or outdated on managed devices; always self-heal first
+- Mixing `Install-ADTWinGetPackage` with `Start-ADTProcess`/`Start-ADTMsiProcess` in the same deployment type hook — use one installation paradigm per hook
+- Using bare WinGet cmdlet names without the `ADT` prefix (`Install-WinGetPackage`, `Repair-WinGetPackageManager`, `Assert-WinGetPackageManager`, …) — those are the non-PSADT cmdlets and bypass logging, error handling, and the PSADT session; always use the `*-ADTWinGet*` versions from the extension module
 
 ## Reference lookup
 
