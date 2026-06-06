@@ -179,7 +179,7 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
-### 0.3.0 — Direct Intune upload (Microsoft Graph)
+### 0.3.0 - 06.06.2026
 - **Direct upload** (`scripts/Invoke-IntuneWin32Upload.ps1`, Phase 7.5): self-contained raw-Graph
   `win32LobApp` upload (parse `.intunewin` → token → probe → idempotency → create/update → content → SAS
   block-blob upload via HttpClient → commit → activate → categories → supersedence). Read-only dry-run by
@@ -192,13 +192,13 @@ Notable changes to the skill, newest first. Append-only — entries are never re
   App-information tab; never auto-assigns category/notes/groups.
 - Fixed the Repair `-FilePath`→`-ProductCode` example; reference guide gains **Appendix H**.
 
-### 0.2.0
+### 0.2.0 - 05.06.2026
 - **Automated SYSTEM test loop** (`scripts/Invoke-PsadtSystemTest.ps1`, Phase 5.5): install → uninstall →
   reinstall the package as the SYSTEM account via `Invoke-CommandAs`, with agent-driven auto-fix until
   green or a max-iteration cap. Opt-in; elevated session required.
 - Phase 8 now prefers `Invoke-CommandAs -AsSystem` for SYSTEM-context testing (PsExec kept as a fallback).
 
-### 0.1.0
+### 0.1.0 - 04.06.2026
 - Initial release: guided PSADT v4 → Intune Win32 lifecycle (intake, autonomous research, scaffolding, all
   three deployment types, pre-flight checks, packaging, dossier + logo, guided testing, troubleshooting).
 - First-run setup writing a machine-local `config.json` (paths, language, author).
