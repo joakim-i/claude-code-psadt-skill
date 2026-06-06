@@ -179,6 +179,12 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.3.1 - 06.06.2026
+- `Invoke-IntuneWin32Upload.ps1` gains **`-DetectionScriptPath`** (PowerShell-script detection rule) for
+  EXE / non-MSI installers without a ProductCode (e.g. Vivaldi). Verified live by uploading Vivaldi 8.0.4033.44.
+- Lesson: a *detection* script rule accepts only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent`
+  (guide Appendix H.2).
+
 ### 0.3.0 - 06.06.2026
 - **Direct upload** (`scripts/Invoke-IntuneWin32Upload.ps1`, Phase 7.5): self-contained raw-Graph
   `win32LobApp` upload (parse `.intunewin` → token → probe → idempotency → create/update → content → SAS

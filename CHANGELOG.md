@@ -2,6 +2,20 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.3.1 — 2026-06-06 — Script detection for non-MSI apps
+
+### Added
+- **PowerShell-script detection** in `Invoke-IntuneWin32Upload.ps1` via `-DetectionScriptPath` (+ optional
+  `-DetectionRunAs32Bit`): builds a `win32LobAppPowerShellScriptRule` (ruleType=detection) for EXE / non-MSI
+  installers (Vivaldi, Chrome-style, NSIS, Squirrel) that have no MSI ProductCode. Mutually exclusive with
+  `-MsiProductCode`. Verified live by packaging + uploading Vivaldi 8.0.4033.44.
+
+### Lessons baked in (do-not-repeat)
+- A **detection** script rule accepts ONLY `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent` —
+  Graph rejects `displayName`/`runAsAccount`/`operationType`/`operator`/`comparisonValue` on detection rules
+  ("The <X> property may not be set for Win32LobAppPowerShellScriptRule instances used for app detection").
+- Reference guide **Appendix H.2** extended; SKILL.md Phase 7.5 + anti-patterns + troubleshooting updated.
+
 ## 0.3.0 — 2026-06-06 — Direct Intune upload (Microsoft Graph)
 
 ### Added

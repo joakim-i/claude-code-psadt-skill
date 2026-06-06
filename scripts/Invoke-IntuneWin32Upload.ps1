@@ -60,6 +60,10 @@ param(
     [string]$MsiProductCode,
     [string]$MsiUpgradeCode,
     [ValidateSet('perMachine','perUser','dualPurpose')][string]$MsiPackageType = 'perMachine',
+    # Detection alternative for non-MSI apps (EXE installers etc.): a PowerShell detection script
+    # (contract: write to stdout + exit 0 when installed; no stdout when not). Mutually exclusive with -MsiProductCode.
+    [string]$DetectionScriptPath,
+    [switch]$DetectionRunAs32Bit,
     [ValidateSet('x64','x86','arm64')][string]$Architecture = 'x64',
     [string]$MinWindowsRelease = '1607',
     [int]$MinFreeDiskSpaceMB = 0,
@@ -175,10 +179,25 @@ $returnCodes = @(
     @{ returnCode = 60001; type = 'failed'     }
     @{ returnCode = 60008; type = 'failed'     }
 )
-if ($MsiProductCode) {
-    # The newer Intune app-metadata backend uses the unified 'rules' collection (win32LobAppRule with a
-    # ruleType), NOT the legacy 'detectionRules' - submitting detectionRules is silently ignored and the
-    # create fails with "must have at least one detection rule". @odata.type first so the subtype binds.
+# Detection: the newer Intune app-metadata backend uses the unified 'rules' collection (win32LobAppRule with a
+# ruleType), NOT the legacy 'detectionRules' - submitting detectionRules is silently ignored and the create
+# fails with "must have at least one detection rule". @odata.type MUST be first so the subtype binds.
+if ($MsiProductCode -and $DetectionScriptPath) {
+    throw "Specify EITHER -MsiProductCode OR -DetectionScriptPath, not both."
+} elseif ($DetectionScriptPath) {
+    if (-not (Test-Path $DetectionScriptPath)) { throw "Detection script not found: $DetectionScriptPath" }
+    $scriptB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($DetectionScriptPath))
+    # A *detection* script rule accepts ONLY these props - displayName/runAsAccount/operationType/operator/
+    # comparisonValue are valid only on *requirement* script rules and Graph rejects them here. Detection uses
+    # the classic contract: the script writes to stdout + exits 0 when installed.
+    $rules = @([ordered]@{
+        '@odata.type'         = '#microsoft.graph.win32LobAppPowerShellScriptRule'
+        ruleType              = 'detection'
+        enforceSignatureCheck = $false
+        runAs32Bit            = [bool]$DetectionRunAs32Bit
+        scriptContent         = $scriptB64
+    })
+} elseif ($MsiProductCode) {
     $rules = @([ordered]@{
         '@odata.type'           = '#microsoft.graph.win32LobAppProductCodeRule'
         ruleType                = 'detection'
@@ -186,7 +205,7 @@ if ($MsiProductCode) {
         productVersionOperator  = 'notConfigured'
         productVersion          = $null
     })
-} else { throw "No detection rule supplied (-MsiProductCode required for this version)." }
+} else { throw "No detection rule supplied - pass -MsiProductCode (MSI apps) or -DetectionScriptPath (EXE/other)." }
 
 # MSI metadata (drives supersedence + version metadata) when this is an MSI-backed package.
 $msiInfo = $null
@@ -264,7 +283,7 @@ if (-not $Execute) {
     Write-Host "  Privacy URL : $PrivacyUrl"
     Write-Host "  Categories  : $(if($Categories){ $Categories -join ', ' } else { '(none)' })"
     Write-Host "  Featured    : $([bool]$Featured)"
-    Write-Host "  Detection   : MSI ProductCode $MsiProductCode"
+    Write-Host "  Detection   : $(if($DetectionScriptPath){"PowerShell script ($([IO.Path]::GetFileName($DetectionScriptPath)))"}else{"MSI ProductCode $MsiProductCode"})"
     Write-Host "  Content     : $fileName ($([Math]::Round($encSize/1MB,1)) MB encrypted)"
     Write-Host "  Logo        : $(if($body.largeIcon){'yes'}else{'NO - WARNING'})"
     Write-Host "  Existing    : $(if($existing){ ($existing | ForEach-Object { "$($_.id) (v$($_.displayVersion))" }) -join ', ' } else { 'none' })"

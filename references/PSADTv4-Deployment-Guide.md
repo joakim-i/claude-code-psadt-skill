@@ -1090,6 +1090,24 @@ rules = @([ordered]@{
 ```
 Never send both `rules` and `detectionRules`/`requirementRules` together.
 
+**Non-MSI apps (EXE installers: Vivaldi, Chrome-style, NSIS, Squirrel) → PowerShell-script detection rule.**
+There is no ProductCode, so use a `win32LobAppPowerShellScriptRule` with `ruleType='detection'` and the
+base64 of the detect script (classic contract: stdout + `exit 0` when installed). A **detection** script rule
+accepts ONLY these properties — Graph rejects the others with `BadRequest: The <X> property may not be set for
+Win32LobAppPowerShellScriptRule instances used for app detection`:
+```powershell
+$rules = @([ordered]@{
+  '@odata.type'         = '#microsoft.graph.win32LobAppPowerShellScriptRule'  # first!
+  ruleType              = 'detection'
+  enforceSignatureCheck = $false
+  runAs32Bit            = $false
+  scriptContent         = [Convert]::ToBase64String([IO.File]::ReadAllBytes($detectPs1))
+})
+```
+Do NOT set `displayName`, `runAsAccount`, `operationType`, `operator`, or `comparisonValue` on a *detection*
+script rule — those are valid only on *requirement* script rules. `Invoke-IntuneWin32Upload.ps1` exposes this
+as `-DetectionScriptPath` (use instead of `-MsiProductCode`). Verified live with the Vivaldi package (2026-06-06).
+
 ### H.3 `@odata.type` must serialise FIRST
 For every polymorphic Graph sub-object (detection rule, `mimeContent` logo, `msiInformation`, supersedence relationship) build it with `[ordered]@{}` so `@odata.type` is the first key. A plain `@{}` hashtable serialises keys in an arbitrary order; when `@odata.type` lands later, the backend fails to bind the subtype and behaves as if the object were missing (this is a second cause of the "no detection rule" error).
 

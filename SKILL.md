@@ -402,6 +402,14 @@ Push the finished `.intunewin` straight to Intune as a **win32LobApp** (app + lo
   -LogoPath '<out>\<App>\<App>-Logo.png'            # add -Execute to actually upload
 ```
 
+**Detection — pick the right rule for the installer type:**
+- **MSI-backed app** (has a ProductCode): `-MsiProductCode '{<GUID>}'` (builds a `win32LobAppProductCodeRule`).
+- **EXE / non-MSI app** (Vivaldi, Chrome-style, NSIS, Squirrel, ...): `-DetectionScriptPath '<out>\<App>\Detect-<App>.ps1'`
+  (builds a `win32LobAppPowerShellScriptRule`, ruleType=detection). The detect script follows the classic
+  contract: write to stdout + `exit 0` when installed, no stdout when not. Add `-DetectionRunAs32Bit` only if needed.
+  A **detection** script rule accepts ONLY `enforceSignatureCheck`, `runAs32Bit`, `scriptContent` — Graph
+  rejects `displayName`/`runAsAccount`/`operationType`/`operator`/`comparisonValue` on detection rules (guide Appendix H.2).
+
 **Fill as many fields as possible — not the minimum.** The user expects a complete *App information* tab, not three fields. Map the dossier metadata onto: `displayName, description (Markdown), publisher, developer, owner, displayVersion, informationUrl, privacyInformationUrl, notes, largeIcon, msiInformation (productCode+productVersion for MSI), returnCodes, rules (detection), installExperience`. Empty fields are a defect to fix, not the norm.
 
 **But NEVER auto-impose user/organisation choices:**
@@ -471,6 +479,7 @@ On user reports, check in this order:
 | Upload `uploadState=commitFileFailed` after blocks uploaded "OK" | Binary corruption: `Invoke-RestMethod -Body <byte[]>` re-encodes the blob | Upload via `HttpClient`/`ByteArrayContent` (raw bytes) (guide Appendix H) |
 | `displayVersion` (App Version) empty after upload despite being sent | v1.0 app-metadata backend drops it | Use `graph.microsoft.com/beta` for the write (guide Appendix H) |
 | Upload `403` on the read-only probe / create | App consent missing/ineffective | Re-run `New-PsadtEntraApp.ps1`; verify `DeviceManagementApps.ReadWrite.All` admin-consented |
+| Upload create fails `The <X> property may not be set for Win32LobAppPowerShellScriptRule ... used for app detection` | A detection script rule carries requirement-only props | Keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent` (guide Appendix H.2) |
 
 HRESULT conversion: Intune shows unknown positive exit codes as `0x80070000 + code`. So `0x80070001` = exit 1 = script did not run at all. Always recompute, don't be misled by the "ERROR_INVALID_FUNCTION" text.
 
@@ -499,6 +508,8 @@ Check logs in this order:
 - **Uploading the PSADT default `Assets\AppIcon.png` (or Banner) as the app logo** - always the REAL downloaded application logo; the upload script blocks the default by hash
 - Trusting `IsAlphaPixelFormat` alone for "transparent" - it is True for opaque images too; sample a real corner pixel AND look at the image
 - Using the legacy `detectionRules`/`requirementRules` for a new win32LobApp on the current backend - use the unified `rules` collection; never both at once
+- For a non-MSI app, forcing an MSI ProductCode rule (there is none) - use a PowerShell-script detection rule (`-DetectionScriptPath`)
+- Setting `displayName`/`runAsAccount`/`operationType`/`operator`/`comparisonValue` on a *detection* script rule - Graph rejects them (valid only on *requirement* script rules)
 - Serialising a polymorphic Graph object with `@odata.type` NOT first - use `[ordered]@{}` so the subtype binds (else "no detection rule")
 - Uploading the encrypted blob with `Invoke-RestMethod -Body <byte[]>` - it corrupts binary; use `HttpClient`/`ByteArrayContent`
 - Writing win32LobApp metadata on `/v1.0` and wondering why `displayVersion` is empty - use `/beta`
