@@ -32,7 +32,13 @@ if ($cfg.intune -and $cfg.intune.uploadEnabled) {
     foreach ($f in 'tenantId','clientId') {
         if ([string]::IsNullOrWhiteSpace([string]$cfg.intune.$f)) { $missing.Add("intune.$f") }
     }
-    $ref = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
-    if (-not (Test-Path (Join-Path $SkillRoot $ref))) { $missing.Add('intune.secret') }
+    if (-not [string]::IsNullOrWhiteSpace([string]$cfg.intune.certThumbprint)) {
+        if (-not (Test-Path "Cert:\CurrentUser\My\$($cfg.intune.certThumbprint)")) {
+            $missing.Add("intune.certThumbprint (cert not found in Cert:\CurrentUser\My)")
+        }
+    } else {
+        $ref = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
+        if (-not (Test-Path (Join-Path $SkillRoot $ref))) { $missing.Add('intune.secret') }
+    }
 }
 [pscustomobject]@{ Exists = $true; Config = $cfg; Missing = $missing.ToArray(); Path = $configPath }

@@ -55,10 +55,26 @@ param(
     [string]$TenantId = 'organizations',
     [ValidateRange(1, 24)][int]$SecretValidMonths = 12,
     [switch]$Force,
-    [switch]$UseDeviceCode
+    [switch]$UseDeviceCode,
+    # Certificate-based auth (preferred over client secret): pass the thumbprint of a cert already in
+    # Cert:\CurrentUser\My. The cert's public key is uploaded to the app; no client secret is created.
+    [switch]$UseCertificate,
+    [string]$CertThumbprint
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Validate cert early (fail before any network calls)
+$certObj = $null
+if ($UseCertificate) {
+    if ([string]::IsNullOrWhiteSpace($CertThumbprint)) {
+        throw "-CertThumbprint is required with -UseCertificate. List available certs: Get-ChildItem Cert:\CurrentUser\My | Select Subject,Thumbprint,NotAfter"
+    }
+    $certObj = Get-Item "Cert:\CurrentUser\My\$CertThumbprint" -ErrorAction SilentlyContinue
+    if (-not $certObj) { throw "Certificate not found: Cert:\CurrentUser\My\$CertThumbprint" }
+    if ($certObj.NotAfter -lt (Get-Date)) { throw "Certificate has expired ($($certObj.NotAfter.ToString('yyyy-MM-dd'))). Create a new cert." }
+    if (-not $certObj.HasPrivateKey) { throw "Certificate Cert:\CurrentUser\My\$CertThumbprint has no private key - cannot sign client assertions." }
+}
 
 # --- Constants ---------------------------------------------------------------------------------------
 $AppDisplayName = 'PSADT Intune Upload'                       # fixed by design
@@ -346,6 +362,20 @@ if ($existing) {
     Write-Ok "Created app (objectId $($app.id), appId $($app.appId))"
 }
 
+# 3b. Upload certificate public key (if -UseCertificate) -----------------------------------------------
+if ($UseCertificate) {
+    Write-Info "Uploading certificate credential (thumbprint $CertThumbprint)..."
+    Invoke-WithRetry { Invoke-Graph PATCH "$GraphBase/applications/$($app.id)" -Headers $H -Body @{
+        keyCredentials = @(@{
+            type        = 'AsymmetricX509Cert'
+            usage       = 'Verify'
+            key         = [Convert]::ToBase64String($certObj.GetRawCertData())
+            displayName = 'PSADT Intune Automation'
+        })
+    } } | Out-Null
+    Write-Ok "Certificate uploaded (expires $($certObj.NotAfter.ToString('yyyy-MM-dd')))."
+}
+
 # 4. Ensure a service principal for the app ------------------------------------------------------------
 Write-Step "Ensure service principal"
 $sp = (Invoke-Graph GET "$GraphBase/servicePrincipals?`$filter=appId eq '$($app.appId)'" -Headers $H).value | Select-Object -First 1
@@ -388,35 +418,54 @@ if ($already) {
     }
 }
 
-# 6. Create a client secret ----------------------------------------------------------------------------
-Write-Step "Create client secret (valid $SecretValidMonths month(s))"
-$expires = (Get-Date).AddMonths($SecretValidMonths)
-$pwdResult = Invoke-Graph POST "$GraphBase/applications/$($app.id)/addPassword" -Headers $H -Body @{
-    passwordCredential = @{ displayName = 'PSADT upload secret'; endDateTime = $expires.ToString('o') }
+# 6. Credential: certificate (preferred) or client secret ----------------------------------------------
+$secret = $null
+$credExpires = $null
+if ($UseCertificate) {
+    Write-Step "Credential: certificate (uploaded in step 3b - no client secret created)"
+    $credExpires = $certObj.NotAfter
+    Write-Ok "Auth will use certificate $CertThumbprint (expires $($credExpires.ToString('yyyy-MM-dd')))."
+} else {
+    Write-Step "Create client secret (valid $SecretValidMonths month(s))"
+    $credExpires = (Get-Date).AddMonths($SecretValidMonths)
+    $pwdResult = Invoke-Graph POST "$GraphBase/applications/$($app.id)/addPassword" -Headers $H -Body @{
+        passwordCredential = @{ displayName = 'PSADT upload secret'; endDateTime = $credExpires.ToString('o') }
+    }
+    $secret = ConvertTo-SecureString $pwdResult.secretText -AsPlainText -Force
+    Write-Ok "Secret created (expires $($credExpires.ToString('yyyy-MM-dd'))). It is never displayed - stored encrypted."
 }
-$secret = ConvertTo-SecureString $pwdResult.secretText -AsPlainText -Force
-Write-Ok "Secret created (expires $($expires.ToString('yyyy-MM-dd'))). It is never displayed - stored encrypted."
 
-# 7. Persist to config (DPAPI for the secret) ----------------------------------------------------------
-Write-Step "Write config (config.json + DPAPI secret.dpapi)"
+# 7. Persist to config ---------------------------------------------------------------------------------
 $setCfg = Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1'
-& $setCfg -SkillRoot $SkillRoot -Secret $secret -Updates @{
+$cfgUpdates = @{
     'intune.tenantId'      = $realTenant
     'intune.clientId'      = $app.appId
     'intune.uploadEnabled' = $true
-    'intune.secretRef'     = 'secret.dpapi'
+}
+if ($UseCertificate) {
+    Write-Step "Write config (config.json - thumbprint stored, no secret file)"
+    $cfgUpdates['intune.certThumbprint'] = $CertThumbprint
+    & $setCfg -SkillRoot $SkillRoot -Updates $cfgUpdates
+} else {
+    Write-Step "Write config (config.json + DPAPI secret.dpapi)"
+    $cfgUpdates['intune.secretRef'] = 'secret.dpapi'
+    & $setCfg -SkillRoot $SkillRoot -Secret $secret -Updates $cfgUpdates
 }
 Write-Ok "Saved to $(Join-Path $SkillRoot 'config.json')"
 
 # --- Summary -----------------------------------------------------------------------------------------
 Write-Host "`n----------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host "Done. Direct Intune upload is configured." -ForegroundColor Green
-Write-Host "  Tenant   : $realTenant"
-Write-Host "  Client   : $($app.appId)   ('$AppDisplayName')"
+Write-Host "  Tenant    : $realTenant"
+Write-Host "  Client    : $($app.appId)   ('$AppDisplayName')"
 Write-Host "  Permission: $RequiredAppRole  (consent: $(if($consentGranted){'granted'}else{'PENDING - grant in portal'}))"
-Write-Host "  Secret   : stored DPAPI-encrypted, expires $($expires.ToString('yyyy-MM-dd'))"
+if ($UseCertificate) {
+    Write-Host "  Auth      : certificate ($CertThumbprint), expires $($credExpires.ToString('yyyy-MM-dd'))" -ForegroundColor Cyan
+} else {
+    Write-Host "  Auth      : client secret, DPAPI-encrypted, expires $($credExpires.ToString('yyyy-MM-dd'))"
+}
 if (-not $consentGranted) {
-    Write-Host "  ACTION   : grant admin consent in the portal before the first upload." -ForegroundColor Yellow
+    Write-Host "  ACTION    : grant admin consent in the portal before the first upload." -ForegroundColor Yellow
 }
 Write-Host "Next: build a package; the upload step (Phase 7.5) will use this app." -ForegroundColor Gray
 Write-Host "----------------------------------------------------------------`n" -ForegroundColor DarkGray
@@ -426,6 +475,7 @@ Write-Host "----------------------------------------------------------------`n" 
     ClientId       = $app.appId
     AppObjectId    = $app.id
     ConsentGranted = $consentGranted
-    SecretExpires  = $expires
+    AuthMethod     = if ($UseCertificate) { 'Certificate' } else { 'ClientSecret' }
+    CredExpires    = $credExpires
     ConfigPath     = (Join-Path $SkillRoot 'config.json')
 }
