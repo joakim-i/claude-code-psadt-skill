@@ -20,6 +20,7 @@ This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package*
 - Start Menu entries only, NO desktop icons
 - Build all three deployment types (Install/Uninstall/Repair) from the start and verify them via acid test
 - Direct Intune upload (Phase 7.5) is opt-in: **fill all objective app-info fields**, but NEVER auto-impose category / branded notes / featured / assignment, and NEVER delete an older version (new versions coexist for supersedence)
+- **Test before upload (BINDING):** Install + Uninstall must pass the Phase 5.5 SYSTEM test before any `.intunewin` is uploaded — never upload an untested package
 
 Per-topic depth in the reference guide `references/PSADTv4-Deployment-Guide.md` (appendices A-H).
 
@@ -268,7 +269,9 @@ Management Extension) BEFORE packing, so bugs are caught early. Runs on the pack
 `.intunewin` needed yet — fixes to the `.ps1` take effect on the next run, and you pack the validated
 scripts afterward). Requires an **elevated** PowerShell session.
 
-Only run when `test.systemTestEnabled` is true OR the user opts in for this package.
+Only run when `test.systemTestEnabled` is true OR the user opts in for this package. **This test is a BINDING
+prerequisite for the Phase 7.5 direct upload** — Install + Uninstall must pass here before any `.intunewin` is
+uploaded. Needs an elevated session; if you cannot run it, stop before the upload and hand the command back to the user.
 
 **Hands:** `scripts/Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM (via the `Invoke-CommandAs`
 module, self-healed from PSGallery) and returns
@@ -391,6 +394,13 @@ Mandatory return codes that must always be included: `0 Success, 1707 Success, 3
 ### 7.5 Direct Intune upload via Microsoft Graph (opt-in)
 
 Push the finished `.intunewin` straight to Intune as a **win32LobApp** (app + logo, **NO group assignment**) instead of copy-pasting the dossier. Self-contained raw Graph - no third-party module. Enabled by Phase 0's `New-PsadtEntraApp.ps1` bootstrap (`intune.uploadEnabled = true`). Manual dossier upload stays the alternative.
+
+> **BINDING PREREQUISITE — test before you upload.** NEVER upload a package whose **Install AND Uninstall**
+> have not been validated. Run the **Phase 5.5 SYSTEM test** (`Invoke-PsadtSystemTest.ps1`: Install -> verify
+> detection -> Uninstall -> verify clean -> Reinstall) and get it GREEN first; fix the package and re-test on
+> any failure. The SYSTEM test needs an **elevated** session (and installs the real software — use a VM/snapshot).
+> If you cannot run it (no elevation, no VM), **STOP before `-Execute` and hand back to the user** with the exact
+> test command — do not upload an untested package.
 
 **Scripts:** `scripts/Get-GraphToken.ps1` (app-only client-credentials token; DPAPI secret decrypted in-memory only) and `scripts/Invoke-IntuneWin32Upload.ps1` (the orchestrator: parse `.intunewin` -> token -> permission probe -> idempotency -> build body -> create/update -> content version -> file -> SAS -> block-blob upload -> commit -> activate -> categories -> supersedence).
 
@@ -516,6 +526,7 @@ Check logs in this order:
 - **Deleting / overwriting the older version when uploading a new one** - new versions COEXIST (separate app, `-OnExisting CreateNewCoexist`); never DELETE; let the user wire supersedence
 - Putting company branding in `notes`, or auto-assigning a category/featured/group - those are user/org decisions (config-driven at most), never script defaults
 - Filling only the minimum app-info fields - populate every objective field (publisher, developer, owner, version, info/privacy URL, description, logo)
+- **Uploading a package whose Install + Uninstall were not tested** - the Phase 5.5 SYSTEM test (install -> uninstall -> reinstall, green) is a BINDING prerequisite for Phase 7.5; if you can't run it, STOP and hand back to the user, never upload untested
 
 ## Reference lookup
 

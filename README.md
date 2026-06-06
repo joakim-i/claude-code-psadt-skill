@@ -179,6 +179,10 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.3.2 - 06.06.2026
+- **Test-before-upload is now a binding gate:** Install + Uninstall must pass the Phase 5.5 SYSTEM test before
+  any Phase 7.5 upload. If it can't be run (no elevation / VM), stop before upload and hand back the command.
+
 ### 0.3.1 - 06.06.2026
 - `Invoke-IntuneWin32Upload.ps1` gains **`-DetectionScriptPath`** (PowerShell-script detection rule) for
   EXE / non-MSI installers without a ProductCode (e.g. Vivaldi). Verified live by uploading Vivaldi 8.0.4033.44.

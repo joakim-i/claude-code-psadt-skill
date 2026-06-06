@@ -2,6 +2,14 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.3.2 — 2026-06-06 — Test-before-upload is now a binding gate
+
+### Changed
+- **Install + Uninstall must pass the Phase 5.5 SYSTEM test before any Phase 7.5 upload.** SKILL.md now makes
+  this a binding prerequisite (Phase 7.5 callout, Phase 5.5 link, anti-pattern, conventions). If the test
+  can't be run (no elevation / no VM), STOP before `-Execute` and hand the user the exact test command —
+  never upload an untested package.
+
 ## 0.3.1 — 2026-06-06 — Script detection for non-MSI apps
 
 ### Added
