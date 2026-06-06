@@ -176,7 +176,8 @@ configurable per machine.
 
 ## Changelog
 
-Full history in **[CHANGELOG.md](CHANGELOG.md)**. Latest:
+Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
+**[CHANGELOG.md](CHANGELOG.md)**.
 
 ### 0.3.0 — Direct Intune upload (Microsoft Graph)
 - **Direct upload** (`scripts/Invoke-IntuneWin32Upload.ps1`, Phase 7.5): self-contained raw-Graph
@@ -191,4 +192,18 @@ Full history in **[CHANGELOG.md](CHANGELOG.md)**. Latest:
   App-information tab; never auto-assigns category/notes/groups.
 - Fixed the Repair `-FilePath`→`-ProductCode` example; reference guide gains **Appendix H**.
 
-See [CHANGELOG.md](CHANGELOG.md) for 0.2.0 and 0.1.0.
+### 0.2.0
+- **Automated SYSTEM test loop** (`scripts/Invoke-PsadtSystemTest.ps1`, Phase 5.5): install → uninstall →
+  reinstall the package as the SYSTEM account via `Invoke-CommandAs`, with agent-driven auto-fix until
+  green or a max-iteration cap. Opt-in; elevated session required.
+- Phase 8 now prefers `Invoke-CommandAs -AsSystem` for SYSTEM-context testing (PsExec kept as a fallback).
+
+### 0.1.0
+- Initial release: guided PSADT v4 → Intune Win32 lifecycle (intake, autonomous research, scaffolding, all
+  three deployment types, pre-flight checks, packaging, dossier + logo, guided testing, troubleshooting).
+- First-run setup writing a machine-local `config.json` (paths, language, author).
+- Self-healing prerequisites: PSAppDeployToolkit module (PSGallery) and `IntuneWinAppUtil.exe`
+  (auto-download + version check).
+- HTML dossier document with a Markdown app-description block (the Intune description field is
+  Markdown-only).
+- English skill + reference guide; MIT licensed.
