@@ -133,7 +133,7 @@ Record per deployment type: switch, expected exit codes, log path, known leftove
 > ```
 > (The skill's `tools/` path is in config under `paths.intuneWinAppUtil`'s parent — adjust if the skill root differs.)
 
-> **Always search by name first** when the exact ID is not already known with certainty. WinGet IDs follow `Publisher.AppName` dot-notation where each word is its own segment — `Microsoft.Sysinternals.Suite`, NOT `Microsoft.SysinternalsSuite`. Guessing the concatenated form wastes a lookup.
+> **Always search by name first** when the exact ID is not already known with certainty. WinGet IDs follow `Publisher.AppName` dot-notation where each word is its own segment — e.g. `Valve.Steam` or `Microsoft.PowerShell.Preview`, NOT `MicrosoftPowerShellPreview`. Guessing the concatenated form wastes a lookup.
 
 ```powershell
 # Step 1: Search by display name to discover the exact ID
@@ -421,7 +421,7 @@ The dossier language follows `language.dossier` (default German), and its umlaut
 
 **Obtain the app logo automatically (mandatory):** Search for and download a suitable logo of the app - **PNG, transparent background, high resolution** (guideline >= 512px, more is better; square is best for the Company Portal tile). Place it under `<pkg>\Assets\<App>-Logo.png` AND a copy into `Output\<App>\`. Reference the filename in the logo row of the dossier.
 - **Choose a license-clear source in this priority order:**
-  1. **Microsoft products first:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `sysinternals`, `powershell`, `sqlserver`).
+  1. **Microsoft products first:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `powershell`, `sqlserver`, `azure`).
   2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects).
   3. **Fallback:** Wikimedia Commons (stable URLs, SVG rendered server-side as a transparent PNG):
   ```powershell
