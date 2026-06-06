@@ -55,10 +55,13 @@ Flow:
    to this setup action.
 2. **Create the app registration** (`POST /applications`, displayName = `PSADT Intune Upload`) + its
    service principal (`POST /servicePrincipals`).
-3. **Grant the application permission + admin consent in one step**: assign the Microsoft Graph app role
-   `DeviceManagementApps.ReadWrite.All` to the new SP via
-   `POST /servicePrincipals/{newSpId}/appRoleAssignments`. This appRoleAssignment **is** the granted admin
-   consent for an application permission — no separate portal click.
+3. **Grant the application permission + admin consent in one step**: first resolve the Microsoft Graph
+   service principal in the tenant (`GET /servicePrincipals?$filter=appId eq
+   '00000003-0000-0000-c000-000000000000'`) and find the `appRole` id whose value is
+   `DeviceManagementApps.ReadWrite.All`. Then assign it to the new app's SP via
+   `POST /servicePrincipals/{newSpId}/appRoleAssignments` with
+   `{ principalId: <newSpId>, resourceId: <graphSpId>, appRoleId: <roleId> }`. This appRoleAssignment
+   **is** the granted admin consent for an application permission — no separate portal click.
 4. **Create a client secret** automatically (`POST /applications/{appObjectId}/addPassword`) — the value
    is returned exactly once.
 5. **Persist**: write `intune.tenantId`, `intune.clientId`, `intune.uploadEnabled = true` via
@@ -93,15 +96,32 @@ Returns a structured result: `{ Ok, TenantId, ClientId, TokenAcquired, GraphProb
 
 ### 4.4 `scripts/New-IntuneWin32AppBody.ps1` — dossier → win32LobApp mapper
 
-Pure function, **no network**. Maps the dossier/intake metadata to the `win32LobApp` request body:
-`@odata.type`, `displayName`, `description` (Markdown), `publisher`, `installCommandLine`,
-`uninstallCommandLine`, `applicableArchitectures`, `minimumSupportedWindowsRelease`, `returnCodes`
-(incl. 0/1707 success, 3010/1641 reboot, 1618 retry, 60001/60008 failed + researched codes), and the
-detection rule (script or MSI/file rule from the package). Independently unit-testable.
+Pure function, **no network**. Maps the dossier/intake metadata to the `win32LobApp` request body.
+Property names below are **verified against the live Graph `win32LobApp` resource schema** (2026-06-06):
+
+- `@odata.type` = `#microsoft.graph.win32LobApp`
+- `displayName`, `description` (Markdown), `publisher`, `developer`/`owner`/`notes` (optional)
+- `displayVersion` — the app version shown in the portal (e.g. `3.9.16`)
+- `fileName` — the `.intunewin` file name; `setupFilePath` — the `SetupFile` from `Detection.xml`
+  (e.g. `Invoke-AppDeployToolkit.exe`)
+- `installCommandLine`, `uninstallCommandLine`
+- `applicableArchitectures` (enum `windowsArchitecture`, e.g. `x64`); `minimumSupportedWindowsRelease`
+  (string, e.g. `1607`) — or the richer `minimumSupportedOperatingSystem` object as an alternative
+- `installExperience` (`win32LobAppInstallExperience`): `runAsAccount` = `system` (PSADT norm),
+  `deviceRestartBehavior` mapped from intake's reboot decision
+- `returnCodes` (`win32LobAppReturnCode` collection) — 0/1707 success, 3010/1641 reboot (soft/hard),
+  1618 retry, 60001/60008 failed + researched codes
+- `detectionRules` (`win32LobAppDetection` collection) — script or MSI/file rule from the package
+- `largeIcon` (`mimeContent` = `{ type: 'image/png', value: <base64> }`) — set here or via the
+  activation PATCH
+
+Independently unit-testable.
 
 ### 4.5 `scripts/Invoke-IntuneWin32Upload.ps1` — orchestrator
 
-The 8-step Graph Win32 LOB upload flow:
+The 8-step Graph Win32 LOB upload flow. **All endpoints below were verified against the live Microsoft
+Graph catalog (msgraph skill, 2026-06-06).** Note: the content sub-paths require the
+**type-cast segment** `microsoft.graph.win32LobApp` between `mobileApps/{id}` and `contentVersions`.
 
 1. **Parse the `.intunewin`** — unzip; read `Detection.xml` → `EncryptionInfo`, unencrypted size,
    `SetupFile`; extract the inner encrypted blob.
