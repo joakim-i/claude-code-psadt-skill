@@ -431,6 +431,56 @@ The dossier language follows `language.dossier` (default German), and its umlaut
   Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
   ```
   Avoid third-party PNG portals (stickpng, toppng, nicepng ...) - hotlink protection/ads/questionable quality.
+  4. **MSI Icon table fallback (when web download fails):** MSI installers embed .ico files in an `Icon` table. Export via COM, read the raw ICO binary, and extract the largest frame directly as bytes (System.Drawing.Icon cannot decode PNG-compressed 256x256 frames embedded in .ico on .NET Framework 4.x - extract raw bytes instead):
+  ```powershell
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -TypeDefinition @'
+  using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
+  public class IcoDibReader {
+      public static Bitmap FromDib32(byte[] dib, int width, int height) {
+          int pixelDataSize = width * height * 4;
+          var pixels = new byte[pixelDataSize];
+          Array.Copy(dib, 40, pixels, 0, pixelDataSize);  // skip 40-byte BITMAPINFOHEADER
+          var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+          var bd = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+          int rb = width * 4;
+          for (int r = 0; r < height; r++) Marshal.Copy(pixels, (height-1-r)*rb, IntPtr.Add(bd.Scan0, r*bd.Stride), rb);
+          bmp.UnlockBits(bd); return bmp;
+      }
+  }
+  '@ -ReferencedAssemblies 'System.Drawing'
+
+  $tmpDir = "$env:TEMP\MsiIconExport"; New-Item $tmpDir -ItemType Directory -Force | Out-Null
+  $type = [System.Type]::GetTypeFromProgID('WindowsInstaller.Installer')
+  $db   = [System.Activator]::CreateInstance($type).OpenDatabase('<path-to.msi>', 0)
+  $db.Export('Icon', $tmpDir, 'Icon.idt')
+
+  # The Icon table binary streams export as <IconName>.ico.ibd in a subfolder named 'Icon'
+  $icoPath = Get-ChildItem "$tmpDir\Icon" -Filter '*.ibd' | Sort-Object Length -Descending | Select-Object -ExpandProperty FullName -First 1
+  $allBytes = [System.IO.File]::ReadAllBytes($icoPath)
+
+  # Find the largest frame in the ICO
+  $count = [BitConverter]::ToUInt16($allBytes, 4)
+  $bestW = 0; $bestOff = 0; $bestSize = 0
+  for ($i = 0; $i -lt $count; $i++) {
+      $base = 6 + $i * 16
+      $w    = [int]$allBytes[$base]; if ($w -eq 0) { $w = 256 }
+      if ($w -gt $bestW) { $bestW = $w; $bestOff = [BitConverter]::ToUInt32($allBytes, $base+12); $bestSize = [BitConverter]::ToUInt32($allBytes, $base+8) }
+  }
+  $frame = New-Object byte[] $bestSize; [Array]::Copy($allBytes, $bestOff, $frame, 0, $bestSize)
+
+  # Check if PNG-compressed (signature 0x89 0x50 0x4E 0x47)
+  if ($frame[0] -eq 0x89 -and $frame[1] -eq 0x50) {
+      [System.IO.File]::WriteAllBytes('<output>.png', $frame)  # PNG frame: write directly
+  } else {
+      # BMP DIB frame: decode with row-flip (bottom-up) and strip AND mask
+      $biH = [Math]::Abs([BitConverter]::ToInt32($frame, 8)) / 2
+      $bmp = [IcoDibReader]::FromDib32($frame, $bestW, [int]$biH)
+      $bmp.Save('<output>.png', [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+  }
+  Remove-Item $tmpDir -Recurse -Force
+  ```
+  Note: `System.Drawing.Icon($path, 256, 256)` silently falls back to 48x48 when the 256x256 frame is PNG-compressed in the .ico - always parse the ICO binary directly for best results.
 - **Verify** (transparency + resolution) and show the user that it is the right logo:
   ```powershell
   Add-Type -AssemblyName System.Drawing
