@@ -33,6 +33,8 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 
 ## Conventions (BINDING)
 
+- **Always Windows PowerShell 5.1, never PowerShell 7:** All command invocations in this skill use `powershell` / `powershell.exe` (Windows PowerShell 5.1), **never** `pwsh` / `pwsh.exe` (PowerShell 7). Intune IME and SCCM execute packages under PS5.1; running build/test steps in PS7 can mask PS5.1 compatibility issues and produce false-green pre-flight results. This applies to all skill scripts, scaffold commands, pre-flight checks, and acid tests. The only exception is the agent's own internal tooling where PS7 is the shell — even then, any subprocess that touches PSADT must be spawned as `powershell.exe`.
+
 - **Language - split by target:**
   - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
   - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
@@ -53,7 +55,7 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 
 Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
-1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
+1. Run `powershell scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
 2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
    - **Languages**: `language.script` (EN), `language.dossier` (DE as default — but a config value, not fixed).
@@ -61,8 +63,9 @@ Before anything else happens: make sure the skill is configured and the prerequi
    - **Intune upload** *(planned for a future version — NOT active in this version)*: mention that it is coming; do NOT ask for tenant/client ID/secret, do NOT set `intune.uploadEnabled`. For now the finished `.intunewin` is uploaded manually in the Admin Center.
 3. Persist answers with `scripts/Set-PsadtConfig.ps1 -Updates @{ ... }` (in this version without `-Secret`).
 4. Provision prerequisites (never block the user):
-   - `pwsh scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
-   - `pwsh scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+   - `powershell scripts/Get-PsadtModule.ps1` — installs/updates PSAppDeployToolkit.
+   - `powershell scripts/Get-IntuneWinAppUtil.ps1` — downloads/updates the content-prep tool into `tools/`.
+   - `powershell scripts/Get-WinGetModule.ps1` — downloads/caches PSAppDeployToolkit.WinGet to `tools/`. Run at scaffold time for WinGet packages only; skip for MSI/EXE packages. Re-triggerable to update the module to the latest release.
 5. Re-triggerable at any time via "psadt setup" to change individual values.
 
 ### 1. Intake (right at the start, before anything else)
@@ -73,8 +76,9 @@ Ask the **8 kill questions exclusively via the `AskUserQuestion` tool** (clickab
 
 The 8 substantive questions that must be covered (spread across the two calls):
 1. **App + exact version** - options: detected/latest version (recommended), known previous version(s), from context.
-2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, other.
-3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime.
+2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, WinGet package, other.
+   - If **WinGet selected**: inject a follow-up `AskUserQuestion` before Q3 covering: Package ID (e.g. `Valve.Steam`, `Microsoft.PowerShell` — user provides or Phase 2b confirms), scope (`Machine` recommended — required for Intune SYSTEM context), version (`Latest` recommended vs pinned). Then **skip Q3** — WinGet packages have no local installer to source.
+3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime. *(Skip for WinGet — Package ID is the source; see Q2 above.)*
 4. **Target audience** - options: Required on devices, Available in Company Portal, both; pull in AAD groups as free text if needed.
 5. **Special config** - options: none (recommended default if nothing is known), registry keys, XML/JSON/settings file, license key, service account, branding (multiSelect: true makes sense).
 6. **Reboot behavior** - options: never (recommended), recommended (3010), forced (1641).
@@ -88,10 +92,15 @@ Optionally follow up depending on context via a further `AskUserQuestion` call: 
 After intake, without asking back, immediately run **three parallel research streams**:
 
 **a) Check PSADT version sync AND command changes:**
+
+> **Run as a temp file, not inline:** Multi-line `powershell -Command "..."` blocks silently fail on Windows. Always write the snippet to a temp `.ps1` and invoke with `powershell -NonInteractive -ExecutionPolicy Bypass -File <path>`.
+
 ```powershell
+# Save as e.g. $env:TEMP\psadt-ver.ps1 and run with -File
 $local = (Get-Module -ListAvailable -Name PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1).Version
 $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest'
 "local=$local latest=$($rel.tag_name)"
+$rel.body -split "`n" | Select-String -Pattern 'Break|renam|deprecat|remov|new.func' | Select-Object -First 15 | ForEach-Object { $_.Line }
 ```
 If divergent: inform the user + recommend `Update-Module PSAppDeployToolkit -Force` BEFORE scaffold.
 
@@ -115,6 +124,35 @@ Show the finding to the user (which commands are new/changed/deprecated and what
 - Official vendor docs first, then silentinstallhq.com, then community (Reddit r/Intune, PSADT Discourse)
 
 Record per deployment type: switch, expected exit codes, log path, known leftovers.
+
+**b-WinGet) Package discovery (replaces stream b when installer type = WinGet):**
+
+> **Module import required:** `Find-ADTWinGetPackage` comes from PSAppDeployToolkit.WinGet. Import it explicitly before calling:
+> ```powershell
+> Import-Module 'C:\Users\<user>\.claude\skills\psadt-deploy\tools\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1' -ErrorAction SilentlyContinue
+> ```
+> (The skill's `tools/` path is in config under `paths.intuneWinAppUtil`'s parent — adjust if the skill root differs.)
+
+> **Always search by name first** when the exact ID is not already known with certainty. WinGet IDs follow `Publisher.AppName` dot-notation where each word is its own segment — e.g. `Valve.Steam` or `Microsoft.PowerShell.Preview`, NOT `MicrosoftPowerShellPreview`. Guessing the concatenated form wastes a lookup.
+
+```powershell
+# Step 1: Search by display name to discover the exact ID
+Find-ADTWinGetPackage -Name '<AppName>' | Select-Object Id, Name, Version, Source | Format-Table -AutoSize
+
+# Step 2: Confirm the chosen ID exists and show full details
+Find-ADTWinGetPackage -Id '<ConfirmedPackageId>' | Format-List Id, Name, Version, Source
+```
+
+**Fallback if WinGet/module is not available on the build machine:** look up the package ID at https://winstall.app/ (web UI over the winget-pkgs repo). This is a last resort — `Find-ADTWinGetPackage` is always preferred because it confirms the ID resolves at runtime on this machine.
+
+If package not found after both steps: stop and ask the user to correct the ID — do NOT scaffold with an invalid ID.
+
+Research the WinGet manifest for detection hints (ProductCode, installer type, known exe names, install path):
+`https://github.com/microsoft/winget-pkgs/tree/master/manifests/<first-letter>/<publisher>/<app>/<version>/`
+
+For WinGet **portable** packages: the manifest's `InstallerType: portable` means WinGet places files under `%ProgramFiles%\WinGet\Packages\<Id>_<Arch>\` and creates shims in `%ProgramFiles%\WinGet\Links\`. The exact exe names inside the Links folder come from the manifest — check the `.yaml` before coding them into shortcut lists. Always guard shortcut creation with `if (Test-Path $exePath)` so a wrong name logs a warning rather than failing the deployment.
+
+Add to stream c for WinGet packages: `"<AppName>" winget intune deployment known issues`.
 
 **c) Known Intune pitfalls:**
 - Query: `"<AppName>" intune win32 known issues`
@@ -157,6 +195,15 @@ Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersio
 ```
 Both must match.
 
+**For WinGet packages only** — provision the extension module into the package folder immediately after scaffold:
+```powershell
+# Download module to tools/ (if not current) and copy into this package
+powershell scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
+# Verify
+(Import-PowerShellDataFile '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1').ModuleVersion
+```
+PSADT's extension auto-loader discovers `PSAppDeployToolkit.WinGet\` by folder-name match and imports it automatically — no `Import-Module` in the deployment script. The `Files\` folder remains empty for WinGet packages (nothing to bundle). Set `AppVersion = 'Latest'` in `$adtSession` (or `'<pinned>'` if a fixed version was requested); read `AppArch` from the WinGet manifest installer type.
+
 ### 4. Script customizing — all three deployment types
 
 The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** in `Invoke-AppDeployToolkit.ps1`: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Even if only install is needed today: later user uninstalls via Company Portal only work with a filled uninstall block.
@@ -167,15 +214,23 @@ The user places the installer in `<pkg>\Files\`. Then fill **all three hooks** i
 - EXE wrapper: `Start-ADTProcess -FilePath "$($adtSession.DirFiles)\<setup>.exe" -ArgumentList '<researched silent switches>' -SuccessExitCodes @(0, 3010, 1641)`
 - InstallShield with `setup.exe /s /f1"<response>.iss"`: response file in `SupportFiles\`
 - Squirrel (`<app>-<ver>-full.nupkg`-based .exe): often `/silent /quiet`
+- WinGet:
+  ```powershell
+  Repair-ADTWinGetPackageManager                                        # self-heal WinGet before every operation
+  Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent # add -Version '<ver>' if pinned
+  ```
 
 Mandatory before install: `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CheckDiskSpace -RequiredDiskSpace <MB>` (no-op in silent, active in interactive). Then `Show-ADTInstallationProgress` for the welcome-replacement display.
 
 **Shortcuts - ONLY Start Menu, NEVER desktop:** If the app needs a shortcut, create exclusively a
-Start Menu entry for all users (`$envCommonStartMenuPrograms`, e.g.
-`New-ADTShortcut -Path "$envCommonStartMenuPrograms\<App>\<App>.lnk" -TargetPath ...`). **No desktop icons**
-(`$envCommonDesktop` / `$envUserDesktop`) - that clutters the desktop and is unwanted in the enterprise.
-If the installer creates a desktop icon on its own: remove it again specifically in post-install
-(`Remove-Item "$envCommonDesktop\<App>.lnk"`). In uninstall, clean up the Start Menu entry as well.
+Start Menu entry for all users. **No desktop icons** (`$envCommonDesktop` / `$envUserDesktop`) — that clutters the desktop and is unwanted in the enterprise. If the installer creates a desktop icon on its own: remove it again specifically in post-install. In uninstall, clean up the Start Menu entry as well.
+
+Use `$envCommonStartMenuPrograms` **inside a deployment function** (e.g. `Install-ADTDeployment`), where it is guaranteed to be set by the PSADT session. **Never reference it at top-level script scope** (in the Variables section before `Open-ADTSession`): the session variable is `$null` there, so a path built from it is silently broken. If you need a top-level constant for the path, use the native Windows equivalent:
+```powershell
+# Safe at top level - does not depend on PSADT session state
+$startMenuDir = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\<App>"
+```
+The same restriction applies to all `$env*` PSADT session variables: `$envCommonDesktop`, `$envUserDesktop`, `$envProfilesDirectory`, `$envWinDir`, etc.
 
 **4b. `Uninstall-ADTDeployment`** — values from intake question 7 (what goes, what stays):
 
@@ -183,6 +238,7 @@ If the installer creates a desktop icon on its own: remove it again specifically
 - MSI via DisplayName match (when ProductCode varies): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (not `Contains` - that accidentally removes neighboring products with a name prefix)
 - EXE with its own uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-from-registry>' -ArgumentList '<silent uninstall switches>'`
 - Squirrel: `Start-ADTProcess -FilePath "$env:LocalAppData\<app>\update.exe" -ArgumentList '--uninstall -s'`
+- WinGet: `Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent`
 
 Post-uninstall cleanup (based on intake question 7):
 - `Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60` (not `-Silent` - uninstalls should be allowed to kill processes)
@@ -201,6 +257,17 @@ Counter-example to warn about: NEVER do `Remove-Item 'HKLM:\SOFTWARE\<vendor>' -
 - MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again)
 - EXE wrapper without a dedicated repair mode: uninstall followed by install in the same hook; preserve user config if possible (backup-restore logic if needed)
 - Config-only repair: stop the service, copy the config files back from `SupportFiles\`, start the service - without reinstalling the app (faster, less invasive)
+- WinGet:
+  ```powershell
+  try {
+      Repair-ADTWinGetPackage -Id '<WinGetId>'
+  } catch {
+      Write-ADTLogEntry -Message "WinGet repair not supported; performing uninstall + reinstall."
+      Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent
+      Repair-ADTWinGetPackageManager
+      Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent
+  }
+  ```
 
 **Custom helpers** ALWAYS in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1`, never in the main script.
 
@@ -236,6 +303,17 @@ foreach ($dt in 'Install','Uninstall','Repair') {
 
 If one of the three types turns red: that is NOT ok even if install is green. Otherwise the Company Portal user gets 0x80070001 when clicking uninstall.
 
+For WinGet packages, add:
+```powershell
+# Check 4: WinGet extension module present in package
+$moduleManifest = '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1'
+if (Test-Path $moduleManifest) {
+    "WinGet module: $((Import-PowerShellDataFile $moduleManifest).ModuleVersion) — OK"
+} else {
+    "WinGet module MISSING — run: powershell scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'"
+}
+```
+
 On an encoding bug (check 1 red or check 3 parse errors): replace em-dashes / smart quotes + UTF-8 BOM:
 ```powershell
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
@@ -245,12 +323,14 @@ $text = $text -replace [char]0x2014, '-' -replace [char]0x2013, '-' -replace [ch
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-If check 3 is too dangerous because a real install would start: use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
+**For WinGet packages, Check 3 WILL trigger a real installation — always use the test stub instead of skipping.** Skipping silently leaves scope bugs and path errors undetected. The stub replaces the deployment functions with a controlled exit and verifies the launcher finds and loads the script correctly without installing anything. See appendix C for the full stub pattern. After the stub passes, defer the live install/uninstall/repair verification to Phase 8 on a DEV VM.
+
+If check 3 is too dangerous for other reasons (real installer would run, licence key consumed, etc.): same rule — use the test stub from guide appendix C (replace the Install-ADTDeployment call with an `exit 77` stub, launcher test, expects exit 77).
 
 Additionally scan:
 ```powershell
-# v3 leftovers
-$v3 = 'Execute-Process','Execute-MSI','Write-Log','Show-InstallationWelcome','Show-InstallationProgress','Show-InstallationPrompt','Get-InstalledApplication','Remove-MSIApplications','Refresh-Desktop','Update-GroupPolicy','Block-AppExecution'
+# v3 leftovers (+ WinGet wrong-prefix guard)
+$v3 = 'Execute-Process','Execute-MSI','Write-Log','Show-InstallationWelcome','Show-InstallationProgress','Show-InstallationPrompt','Get-InstalledApplication','Remove-MSIApplications','Refresh-Desktop','Update-GroupPolicy','Block-AppExecution','Assert-WinGetPackageManager','Get-WinGetPackage','Install-WinGetPackage','Uninstall-WinGetPackage','Repair-WinGetPackage','Repair-WinGetPackageManager'
 $t = [System.IO.File]::ReadAllText($s)
 foreach ($fn in $v3) { $m = [regex]::Matches($t, "\b$fn\b"); if ($m.Count) { "V3_FOUND: $fn ($($m.Count)x)" } }
 
@@ -281,7 +361,7 @@ nothing — YOU (the agent) drive the loop and apply fixes between runs.
 - Keep each iteration's PSADT log in the output folder for an audit trail.
 
 **Loop (max `test.maxIterations`):**
-1. **Install:** `pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
+1. **Install:** `powershell scripts/Invoke-PsadtSystemTest.ps1 -PackagePath <pkg> -DeploymentType Install -DetectionScript <detect>` (elevated). If not `Success`: read `LogTail`/`ErrorLines`, map to a root cause via the Troubleshooting quick-reference + guide Appendix A, fix `Install-ADTDeployment` (or Extensions), re-run.
 2. **Uninstall:** run with `-DeploymentType Uninstall`. Verify `DetectionState = not-installed` AND the leftover checks (services, scheduled tasks, app registry key, install dir, firewall rules; neighbour products of the same vendor still present). On failure: fix `Uninstall-ADTDeployment`, re-run.
 3. **Reinstall:** run `Install` again; verify installed. On failure: fix, re-run.
 4. **Converged** (all three green) → leave the machine per `test.endState`, then proceed to Packaging (Phase 6) with the validated scripts.
@@ -340,7 +420,10 @@ The dossier language follows `language.dossier` (default German), and its umlaut
 **Note: direct Graph upload is planned for a future skill version.** For now the user uploads the generated `.intunewin` manually in the Intune Admin Center.
 
 **Obtain the app logo automatically (mandatory):** Search for and download a suitable logo of the app - **PNG, transparent background, high resolution** (guideline >= 512px, more is better; square is best for the Company Portal tile). Place it under `<pkg>\Assets\<App>-Logo.png` AND a copy into `Output\<App>\`. Reference the filename in the logo row of the dossier.
-- **Choose a license-clear source:** first the official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects), otherwise **Wikimedia Commons** (stable URLs, SVG is rendered server-side as a transparent PNG):
+- **Choose a license-clear source in this priority order:**
+  1. **Microsoft products first:** try `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png` (official Microsoft Learn assets, transparent PNG, direct download). Replace `<product>` with the lowercase product identifier (e.g. `powershell`, `sqlserver`, `azure`).
+  2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/` for Apache projects).
+  3. **Fallback:** Wikimedia Commons (stable URLs, SVG rendered server-side as a transparent PNG):
   ```powershell
   # Wikimedia: SVG -> transparent PNG at the desired width (here 1024)
   $api = "https://commons.wikimedia.org/w/api.php?action=query&titles=$([uri]::EscapeDataString('File:<Logo>.svg'))&prop=imageinfo&iiprop=url&iiurlwidth=1024&format=json"
@@ -348,6 +431,56 @@ The dossier language follows `language.dossier` (default German), and its umlaut
   Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
   ```
   Avoid third-party PNG portals (stickpng, toppng, nicepng ...) - hotlink protection/ads/questionable quality.
+  4. **MSI Icon table fallback (when web download fails):** MSI installers embed .ico files in an `Icon` table. Export via COM, read the raw ICO binary, and extract the largest frame directly as bytes (System.Drawing.Icon cannot decode PNG-compressed 256x256 frames embedded in .ico on .NET Framework 4.x - extract raw bytes instead):
+  ```powershell
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -TypeDefinition @'
+  using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
+  public class IcoDibReader {
+      public static Bitmap FromDib32(byte[] dib, int width, int height) {
+          int pixelDataSize = width * height * 4;
+          var pixels = new byte[pixelDataSize];
+          Array.Copy(dib, 40, pixels, 0, pixelDataSize);  // skip 40-byte BITMAPINFOHEADER
+          var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+          var bd = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+          int rb = width * 4;
+          for (int r = 0; r < height; r++) Marshal.Copy(pixels, (height-1-r)*rb, IntPtr.Add(bd.Scan0, r*bd.Stride), rb);
+          bmp.UnlockBits(bd); return bmp;
+      }
+  }
+  '@ -ReferencedAssemblies 'System.Drawing'
+
+  $tmpDir = "$env:TEMP\MsiIconExport"; New-Item $tmpDir -ItemType Directory -Force | Out-Null
+  $type = [System.Type]::GetTypeFromProgID('WindowsInstaller.Installer')
+  $db   = [System.Activator]::CreateInstance($type).OpenDatabase('<path-to.msi>', 0)
+  $db.Export('Icon', $tmpDir, 'Icon.idt')
+
+  # The Icon table binary streams export as <IconName>.ico.ibd in a subfolder named 'Icon'
+  $icoPath = Get-ChildItem "$tmpDir\Icon" -Filter '*.ibd' | Sort-Object Length -Descending | Select-Object -ExpandProperty FullName -First 1
+  $allBytes = [System.IO.File]::ReadAllBytes($icoPath)
+
+  # Find the largest frame in the ICO
+  $count = [BitConverter]::ToUInt16($allBytes, 4)
+  $bestW = 0; $bestOff = 0; $bestSize = 0
+  for ($i = 0; $i -lt $count; $i++) {
+      $base = 6 + $i * 16
+      $w    = [int]$allBytes[$base]; if ($w -eq 0) { $w = 256 }
+      if ($w -gt $bestW) { $bestW = $w; $bestOff = [BitConverter]::ToUInt32($allBytes, $base+12); $bestSize = [BitConverter]::ToUInt32($allBytes, $base+8) }
+  }
+  $frame = New-Object byte[] $bestSize; [Array]::Copy($allBytes, $bestOff, $frame, 0, $bestSize)
+
+  # Check if PNG-compressed (signature 0x89 0x50 0x4E 0x47)
+  if ($frame[0] -eq 0x89 -and $frame[1] -eq 0x50) {
+      [System.IO.File]::WriteAllBytes('<output>.png', $frame)  # PNG frame: write directly
+  } else {
+      # BMP DIB frame: decode with row-flip (bottom-up) and strip AND mask
+      $biH = [Math]::Abs([BitConverter]::ToInt32($frame, 8)) / 2
+      $bmp = [IcoDibReader]::FromDib32($frame, $bestW, [int]$biH)
+      $bmp.Save('<output>.png', [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+  }
+  Remove-Item $tmpDir -Recurse -Force
+  ```
+  Note: `System.Drawing.Icon($path, 256, 256)` silently falls back to 48x48 when the 256x256 frame is PNG-compressed in the .ico - always parse the ICO binary directly for best results.
 - **Verify** (transparency + resolution) and show the user that it is the right logo:
   ```powershell
   Add-Type -AssemblyName System.Drawing
@@ -383,6 +516,26 @@ More info: [Vendor page](https://...)
 ```
 
 Mandatory return codes that must always be included: `0 Success, 1707 Success, 3010 Soft reboot, 1641 Hard reboot, 1618 Retry, 60001 Failed, 60008 Failed` + installer-specific codes from the research.
+
+**For WinGet packages — additional dossier requirements:**
+- Requirements table: add `Windows Package Manager (WinGet) >= 1.7.10582` — note that `Repair-ADTWinGetPackageManager` in the install hook self-heals this automatically.
+- Detection note: The PSAppDeployToolkit.WinGet module is bundled inside the `.intunewin` and extracted at install time only — it is **NOT** present on the device during Intune's detection phase. Detection must use registry or file checks only. Never use `Get-ADTWinGetPackage` in a detection script. Recommended template for WinGet-installed apps:
+  ```powershell
+  # Detect-<AppName>.ps1 — registry-based, works regardless of ProductCode stability
+  $regBases = @(
+      'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  )
+  foreach ($base in $regBases) {
+      $match = Get-ChildItem $base -ErrorAction SilentlyContinue |
+          Get-ItemProperty |
+          Where-Object { $_.DisplayName -like '<AppName>*' } |
+          Select-Object -First 1
+      if ($match) { Write-Output "Detected: $($match.DisplayName) $($match.DisplayVersion)"; exit 0 }
+  }
+  exit 1
+  ```
+  For apps whose WinGet manifest includes a stable `ProductCode`, use the direct GUID key (`HKLM:\...\Uninstall\{<ProductCode>}`) — faster and more reliable than a DisplayName scan.
 
 ### 8. Test sequence (BEFORE production rollout) — all three deployment types
 
@@ -443,8 +596,9 @@ Check logs in this order:
 ## Anti-patterns (never do)
 
 - v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...)
-- Em-dash/smart quote in double-quoted strings
+- Em-dash/smart quote **anywhere in the script file** — this means in comments too, not just in double-quoted strings. All generated script text must be 7-bit ASCII only. Use `-` (hyphen) never `—` (U+2014) or `–` (U+2013). This is the single most common encoding failure and always requires at least two extra pre-flight runs to find and fix.
 - Saving UTF-8 without BOM when non-ASCII is present
+- Referencing PSADT session variables (`$envCommonStartMenuPrograms`, `$envCommonDesktop`, `$envProfilesDirectory`, …) at top-level script scope in the Variables section — they are `$null` there because `Open-ADTSession` has not run yet. Use `$env:ProgramData`, `$env:SystemRoot`, etc. at the top level, or define the derived paths inside the deployment functions.
 - Top-level code outside try/catch
 - `-o` inside `-c` for IntuneWinAppUtil
 - Not mapping return codes 60001/60008 as Failed
@@ -456,6 +610,11 @@ Check logs in this order:
 - Triggering fallback delete actions on the first negative async response (services need 30-60s after msiexec, build a retry loop)
 - Creating desktop icons (or leaving ones created by the installer) - Start Menu entries only, keep the desktop clean
 - Recognizing a newer PSADT version only by its number and adopting it blindly - always check the release notes/changelog for changed/deprecated commands
+- Using `Get-ADTWinGetPackage` in a detection script — the WinGet module lives inside `.intunewin` and is not present on the device at detection time; use registry or file detection only
+- `-Scope User` in WinGet Intune deployments — Intune SYSTEM context has no mounted user hive; always use `-Scope Machine`
+- Skipping `Repair-ADTWinGetPackageManager` before `Install-ADTWinGetPackage` — WinGet may be absent or outdated on managed devices; always self-heal first
+- Mixing `Install-ADTWinGetPackage` with `Start-ADTProcess`/`Start-ADTMsiProcess` in the same deployment type hook — use one installation paradigm per hook
+- Using bare WinGet cmdlet names without the `ADT` prefix (`Install-WinGetPackage`, `Repair-WinGetPackageManager`, `Assert-WinGetPackageManager`, …) — those are the non-PSADT cmdlets and bypass logging, error handling, and the PSADT session; always use the `*-ADTWinGet*` versions from the extension module
 
 ## Reference lookup
 
