@@ -24,6 +24,3 @@ testResults*.xml
 
 # Local planning / specs (superpowers) - NEVER commit, stays local
 docs/superpowers/
-CWindowsTempskill-diff.txt
-CWindowsTempskill-ours.md
-CWindowsTempskill-upstream.md

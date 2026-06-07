@@ -77,6 +77,7 @@ Ask the **8 kill questions exclusively via the `AskUserQuestion` tool** (clickab
 The 8 substantive questions that must be covered (spread across the two calls):
 1. **App + exact version** - options: detected/latest version (recommended), known previous version(s), from context.
 2. **Installer type** - options: MSI, EXE wrapper, MSIX, InstallShield, Squirrel/ZIP/portable, WinGet package, other.
+   - **WinGet is strictly OPT-IN and NEVER the default.** Default to the app's native installer (MSI/EXE/...). Only go the WinGet route when the user *explicitly* picks "WinGet package" here — never assume, recommend, or auto-select it, even if a WinGet package exists. The whole WinGet path below (2b discovery, module provisioning, install/uninstall/repair patterns) applies ONLY after that explicit choice.
    - If **WinGet selected**: inject a follow-up `AskUserQuestion` before Q3 covering: Package ID (e.g. `Valve.Steam`, `Microsoft.PowerShell` — user provides or Phase 2b confirms), scope (`Machine` recommended — required for Intune SYSTEM context), version (`Latest` recommended vs pinned). Then **skip Q3** — WinGet packages have no local installer to source.
 3. **Installer source** - options: available locally (path follows), download + bundle into the package (recommended), download at runtime. *(Skip for WinGet — Package ID is the source; see Q2 above.)*
 4. **Target audience** - options: Required on devices, Available in Company Portal, both; pull in AAD groups as free text if needed.
@@ -646,6 +647,7 @@ Check logs in this order:
 - Triggering fallback delete actions on the first negative async response (services need 30-60s after msiexec, build a retry loop)
 - Creating desktop icons (or leaving ones created by the installer) - Start Menu entries only, keep the desktop clean
 - Recognizing a newer PSADT version only by its number and adopting it blindly - always check the release notes/changelog for changed/deprecated commands
+- **Defaulting to / auto-selecting / recommending WinGet** — it is strictly opt-in (intake Q2); use the app's native installer (MSI/EXE/...) unless the user *explicitly* chose WinGet. Never assume WinGet just because a package exists
 - Using `Get-ADTWinGetPackage` in a detection script — the WinGet module lives inside `.intunewin` and is not present on the device at detection time; use registry or file detection only
 - `-Scope User` in WinGet Intune deployments — Intune SYSTEM context has no mounted user hive; always use `-Scope Machine`
 - Skipping `Repair-ADTWinGetPackageManager` before `Install-ADTWinGetPackage` — WinGet may be absent or outdated on managed devices; always self-heal first

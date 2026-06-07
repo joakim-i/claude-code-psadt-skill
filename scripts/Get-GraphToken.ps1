@@ -55,9 +55,12 @@ if (-not [string]::IsNullOrWhiteSpace([string]$cfg.intune.certThumbprint)) {
         exp = [Int64]$now.AddMinutes(5).ToUnixTimeSeconds()
     } | ConvertTo-Json -Compress))
     $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
-    $sigBytes = $rsa.SignData([Text.Encoding]::UTF8.GetBytes("$hdr.$pay"),
-        [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    if (-not $rsa) { throw "Certificate Cert:\CurrentUser\My\$thumbprint has no usable RSA private key - cannot sign the client assertion." }
+    try {
+        $sigBytes = $rsa.SignData([Text.Encoding]::UTF8.GetBytes("$hdr.$pay"),
+            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    } finally { $rsa.Dispose() }
     $assertion = "$hdr.$pay.$([Convert]::ToBase64String($sigBytes).TrimEnd('=').Replace('+','-').Replace('/','_'))"
 
     $resp = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" -Body @{

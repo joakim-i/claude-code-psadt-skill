@@ -2,6 +2,33 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.4.0 — 2026-06-06 — WinGet support + certificate auth (PR #4)
+
+Contributed by **@joakim-i** (PR #4), reviewed + hardened before merge.
+
+### Added
+- **WinGet packaging support** (strictly **opt-in**, never the default): `scripts/Get-WinGetModule.ps1`
+  (self-heals the `PSAppDeployToolkit.WinGet` extension into `tools/` + the package), full SKILL.md lifecycle
+  (intake Q2 option, Phase 2b discovery, install/uninstall/repair via `*-ADTWinGet*`, detection caveats,
+  anti-patterns) and `tests/Get-WinGetModule.Tests.ps1`.
+- **Certificate-based auth for Phase 7.5** — `New-PsadtEntraApp.ps1 -UseCertificate -CertThumbprint` uploads
+  the cert's **public** key as an app `keyCredential`; `Get-GraphToken.ps1` signs an RFC 7523 JWT client
+  assertion (RS256) with the private key (never exported). No secret at rest; config stores only the
+  thumbprint. Client-secret path retained as fallback.
+- **MSI Icon-table logo extraction** as a logo fallback (4-priority source list in Phase 7).
+
+### Fixed
+- Device-code polling `ScriptHalted` on the first poll (OAuth errors return a bare string, not a `.code`/`.message` object).
+
+### Review hardening (applied on top of the PR before merge)
+- Removed three junk `.gitignore` lines accidentally added by diff tooling.
+- Dropped the unsubstantiated `offline_access` addition to `$WamScopes` (WAM is verified working without it; avoids
+  MSAL reserved-scope risk; this one-shot bootstrap needs no refresh token).
+- `Get-WinGetModule.ps1` now surfaces the **Authenticode trust state** of the third-party module (it executes on
+  devices) and documents the supply-chain assumption.
+- `Get-GraphToken.ps1` cert path: null-check `GetRSAPrivateKey` and dispose the RSA key.
+- Made **WinGet's opt-in / never-default** rule explicit in SKILL.md (intake Q2 + anti-pattern).
+
 ## 0.3.2 — 2026-06-06 — Test-before-upload is now a binding gate
 
 ### Changed

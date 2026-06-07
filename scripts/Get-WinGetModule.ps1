@@ -68,6 +68,16 @@ try {
     $src = Join-Path $tmpDir 'PSAppDeployToolkit.WinGet'
     if (-not (Test-Path $src)) { throw "Expected folder 'PSAppDeployToolkit.WinGet' not found inside $assetName." }
 
+    # SUPPLY-CHAIN NOTE: this is a third-party community module (mjr4077au/PSAppDeployToolkit.WinGet) that gets
+    # packed into the .intunewin and EXECUTES on managed devices. We surface its Authenticode trust state so a
+    # tampered/unsigned drop is visible (non-fatal - the PSADT WinGet module is normally signed by its author).
+    $sig = Get-AuthenticodeSignature (Join-Path $src 'PSAppDeployToolkit.WinGet.psm1') -ErrorAction SilentlyContinue
+    if ($sig -and $sig.Status -eq 'Valid') {
+        Write-Verbose "WinGet module Authenticode signature: Valid ($($sig.SignerCertificate.Subject))."
+    } else {
+        Write-Warning "PSAppDeployToolkit.WinGet is NOT Authenticode-Valid (Status: $($sig.Status)). It is a third-party module that runs on devices - verify the source/release before deploying."
+    }
+
     Remove-Item $moduleDest -Recurse -Force -ErrorAction SilentlyContinue
     New-Item (Split-Path $moduleDest -Parent) -ItemType Directory -Force | Out-Null
     Copy-Item $src $moduleDest -Recurse -Force
