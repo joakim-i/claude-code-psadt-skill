@@ -46,6 +46,11 @@ description until a task makes it relevant, then the full body loads on demand.
   cmdlet scan before anything is packaged.
 - **Packaging to `.intunewin`** — packs with IntuneWinAppUtil to the central output folder and verifies
   the package (correct `SetupFile`, size).
+- **WinGet packaging** *(opt-in, never the default)* — full `PSAppDeployToolkit.WinGet` lifecycle when you
+  *explicitly* choose the WinGet installer type: self-heals the extension module into the package
+  (`scripts/Get-WinGetModule.ps1`), discovers the Package ID (`Find-ADTWinGetPackage`), and fills
+  install/uninstall/repair via `*-ADTWinGet*` (`-Scope Machine`). The default stays the app's native
+  installer (MSI/EXE/…) — WinGet is used only on explicit request.
 - **App logo auto-fetch** — finds and downloads the **real** application logo (official vendor source or
   Wikimedia Commons) as a high-resolution PNG, verifies actual pixel transparency *and* visually confirms
   the brand. Never ships the PSADT default `AppIcon.png` (the upload script blocks it by hash).
@@ -64,9 +69,10 @@ description until a task makes it relevant, then the full body loads on demand.
 - **Direct Intune upload via Microsoft Graph** *(opt-in)* — pushes the `.intunewin` straight to Intune as a
   `win32LobApp` (app + logo, **no group assignment**), self-contained raw Graph, no third-party module. A
   one-time `New-PsadtEntraApp.ps1` bootstrap signs in via **WAM** (Windows broker), creates the Entra app,
-  grants + admin-consents `DeviceManagementApps.ReadWrite.All`, and DPAPI-stores the secret. Read-only
-  dry-run → confirm → upload. Fills the full App-information tab; **never deletes an older version** (new
-  versions coexist, with optional supersedence wiring); never auto-assigns categories/notes/groups.
+  grants + admin-consents `DeviceManagementApps.ReadWrite.All`, and stores the credential — a
+  **certificate** (preferred; no secret at rest, JWT client-assertion auth) or a DPAPI-encrypted client
+  secret. Read-only dry-run → confirm → upload. Fills the full App-information tab; **never deletes an older
+  version** (new versions coexist, with optional supersedence wiring); never auto-assigns categories/notes/groups.
 
 > Planned features (GitHub package sync) live in the [Roadmap](#roadmap).
 
@@ -83,7 +89,10 @@ description until a task makes it relevant, then the full body loads on demand.
 - For the optional **direct Intune upload**: an Entra app registration with the Graph **application**
   permission `DeviceManagementApps.ReadWrite.All` (admin consent granted) — created for you in one run by
   `scripts/New-PsadtEntraApp.ps1` (interactive WAM sign-in as Global Admin / Privileged Role Admin; device
-  code fallback). Manual portal route: `references/app-registration.md`.
+  code fallback). Certificate or client-secret auth (cert via `-UseCertificate -CertThumbprint`). Manual
+  portal route: `references/app-registration.md`.
+- For the optional **WinGet packaging** path: nothing extra — `scripts/Get-WinGetModule.ps1` auto-downloads
+  the `PSAppDeployToolkit.WinGet` extension into `tools/` (and into the package) the first time you choose WinGet.
 
 ## Installation
 
@@ -126,15 +135,16 @@ psadt-deploy/
 ├─ README.md  ·  CHANGELOG.md  ·  LICENSE
 ├─ scripts/
 │   ├─ Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil   setup + self-healing prerequisites
+│   ├─ Get-WinGetModule.ps1                                         opt-in WinGet extension provisioning
 │   ├─ Invoke-PsadtSystemTest.ps1                                   opt-in SYSTEM test loop (Phase 5.5)
-│   ├─ New-PsadtEntraApp.ps1                                        one-time Entra app bootstrap (WAM)
-│   ├─ Get-GraphToken.ps1                                           app-only Graph token (uploads)
+│   ├─ New-PsadtEntraApp.ps1                                        one-time Entra app bootstrap (WAM, cert/secret)
+│   ├─ Get-GraphToken.ps1                                           app-only Graph token (cert or DPAPI secret)
 │   └─ Invoke-IntuneWin32Upload.ps1                                 direct Intune upload (Phase 7.5)
 ├─ references/                       PSADTv4-Deployment-Guide.md (App. A–H) · app-registration.md
 ├─ tests/                            Pester suite for the helper scripts
-├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe
+├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe + PSAppDeployToolkit.WinGet
 ├─ config.json   (gitignored)        machine-local settings (incl. the `intune.*` block)
-└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret (CurrentUser scope)
+└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret (only when not using cert auth)
 ```
 
 ## Status
