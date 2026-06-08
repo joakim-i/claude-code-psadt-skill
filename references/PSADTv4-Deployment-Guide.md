@@ -819,9 +819,48 @@ Only when ALL lines are green: production rollout.
 
 ---
 
-## Appendix F: Intune deployment dossier (upload template, to be filled in per app)
+## Appendix F: Package report (Intune dossier + technical report)
 
-Place this template as a full HTML file per app next to the `.intunewin` (`Intune-Dossier.html`). **Exception:** the F.2 description block is **Markdown**, because the Intune app description field supports only Markdown (not HTML). Without a filled-in dossier: **no upload**. The values come from Phase 0.2/0.3.
+**The report is generated for EVERY package — uploaded or not — by `scripts/New-PsadtReport.ps1` from the fixed
+template `references/Report-Template.html`. Do NOT hand-assemble the HTML.** Output is always
+`Intune-Dossier.html` in `Output\<App>\`. It is one self-contained, **bilingual (DE/EN toggle)** document:
+part 1 is the Intune dossier (the tables F.1–F.9 below), part 2 is the technical package report (deployment
+hooks, PSADT cmdlets used, pre-flight results, the Phase 5.5 SYSTEM-test result, logo + `.intunewin`
+verification). The logo is embedded as a base64 data URI; the description **preview is rendered client-side
+from its Markdown source**. **Exception:** the F.2 description block is **Markdown**, because the Intune app
+description field supports only Markdown (not HTML). The values come from Phase 0.2/0.3 and the test phases.
+
+### F.0 Generator usage + `-Metadata` keys
+
+```powershell
+& scripts/New-PsadtReport.ps1 -Metadata $meta -LogoPath '<Output\<App>\<App>-Logo.png>' `
+    -OutputPath '<Output\<App>\Intune-Dossier.html'
+```
+
+`$meta` is a hashtable. Every key is optional (sane defaults fill the rest, so the report is always complete):
+
+| Key | Meaning |
+|---|---|
+| `Lang` | initial language `de` (default) / `en` — both are always embedded regardless |
+| `AppName`, `AppVersion`, `Publisher`, `Developer`, `Owner` | header + App Info |
+| `PkgRev`, `ScriptVersion`, `Created`, `Author`, `PsadtVersion`, `ModuleVersion` | header meta + cmdlet note |
+| `SubDe`/`SubEn`, `StatusDe`/`StatusEn` | header subtitle + status pill (HTML entities allowed) |
+| `Category` (null⇒"not preset"), `Featured` (bool), `InfoUrl`, `PrivacyUrl`, `Notes` | App Info |
+| `DescMdDe`, `DescMdEn` | description **Markdown** per language (real umlauts here) |
+| `InstallCmd`, `UninstallCmd`, `InstallBehavior`, `RestartBehaviorDe/En`, `RestartNoteDe/En`, `InstallTimeMin`, `AllowUninstall` | Program |
+| `ReturnCodes` | array of `@{ Code; Cls=b-ok/b-warn/b-neut/b-fail; Label; De; En }` (defaults to the standard table) |
+| `OsArch`, `MinOs`, `DiskMb`, `MemoryMb` | Requirements |
+| `RuleFormat`, `DetectScript`, `RunAs32` (bool), `SignatureCheck` (bool) | Detection |
+| `Dependencies`/`Supersedence` (+`*NoteDe/En`) | null ⇒ "none" + note |
+| `Assignments` | array of `@{ Group; Type=Required/Available/Uninstall; Availability }` |
+| `HookInstall`, `HookUninstall`, `HookRepair` | arrays of bullets: a string (technical, same both langs) or `@{ De; En }` |
+| `Cmdlets` | array of cmdlet names (chips) |
+| `Preflight` | array of `@{ Title; Cls=ok/warn/fail; De; En; BDe; BEn }` (defaults to 6 passing checks) |
+| `SystemTest` (+`SystemTestNoteDe/En`) | array of `@{ StepDe; StepEn; Exit; Detection; Cls; Result }` |
+| `LogoSource`, `LogoResolution`, `LogoGuardOk` (bool), `IntuneWin`, `SetupFile`, `Location` | Logo & package-file section |
+
+The tables F.1–F.9 below are the source-of-truth field reference (what each value means); the generator maps
+them onto the template. Keep them for depth and for the manual Admin-Center route.
 
 ### F.1 App information
 

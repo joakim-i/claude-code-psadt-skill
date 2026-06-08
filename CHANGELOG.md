@@ -2,6 +2,32 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.5.2 — 2026-06-08 — Always-on HTML package report (template + generator)
+
+### Added
+- **`scripts/New-PsadtReport.ps1`** (+ `tests/New-PsadtReport.Tests.ps1`, 9 cases): generates the package
+  report as a single self-contained HTML file from the fixed template `references/Report-Template.html`.
+  Data-driven via a `-Metadata` hashtable (or `-MetadataPath` JSON) with sane defaults for every field, so a
+  minimal call still yields a complete report. Variable-length sections (return codes, cmdlets, deployment-hook
+  bullets, pre-flight checks, SYSTEM-test rows, assignments) are built from arrays. The logo is embedded as a
+  base64 data URI (fallback: a neutral initials tile), and free text is HTML-escaped (no injection).
+- **`references/Report-Template.html`** — the fixed, tokenized report template. Fluent-2 styling, a **sticky
+  header that shrinks on scroll** (with hysteresis to avoid flicker; disabled on mobile), the **real app logo
+  in the header**, a **DE/EN language toggle** (decoupled, absolutely-positioned status block so switching
+  never shifts the layout), and a client-side Markdown renderer so the description **preview is generated from
+  its Markdown source**. The document stays browser-translatable.
+
+### Changed
+- **The HTML report is now BINDING — generated for EVERY package, whether or not it is uploaded to Intune.**
+  It is one combined document: the **Intune dossier** (App Info, description, Program, Return Codes,
+  Requirements, Detection, Dependencies, Supersedence, Assignments) **plus a technical package report**
+  (deployment hooks, PSADT cmdlets used, pre-flight + SYSTEM-test results, logo/`.intunewin` verification).
+  SKILL.md Phase 7 + conventions updated; Appendix F rewritten around the generator + the `-Metadata` key list;
+  README Features/structure updated. New anti-patterns: never skip the report, never hand-assemble it.
+- The report is bilingual and keeps **real umlauts** (the report is end-user output — the script-only ASCII
+  rule does not apply; the template is ASCII via HTML entities, umlauts come from the description metadata,
+  output is written UTF-8).
+
 ## 0.5.1 — 2026-06-06 — Robust commit-based self-update + README fix
 
 ### Changed

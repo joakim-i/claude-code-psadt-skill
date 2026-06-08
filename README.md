@@ -54,9 +54,14 @@ description until a task makes it relevant, then the full body loads on demand.
 - **App logo auto-fetch** — finds and downloads the **real** application logo (official vendor source or
   Wikimedia Commons) as a high-resolution PNG, verifies actual pixel transparency *and* visually confirms
   the brand. Never ships the PSADT default `AppIcon.png` (the upload script blocks it by hash).
-- **Deliverable dossier** — produces the Intune metadata, return-code map, detection rule, and a
-  ready-to-paste **Markdown** app description for the Company Portal field (the dossier document itself
-  is HTML; the Intune description field supports only Markdown, not HTML).
+- **HTML package report — always generated** — every finished package gets a single self-contained report
+  (`Intune-Dossier.html`), **whether or not it is uploaded to Intune**. Built by `scripts/New-PsadtReport.ps1`
+  from the fixed template `references/Report-Template.html` (never hand-assembled). It combines the **Intune
+  dossier** (App Info, return-code map, detection rule, requirements, assignments, and a ready-to-paste
+  **Markdown** app description for the Company-Portal field) with a **technical package report** (the three
+  deployment hooks, PSADT cmdlets used, pre-flight + SYSTEM-test results, logo/`.intunewin` verification). The
+  document is **bilingual with a DE/EN toggle** (and stays browser-translatable), Fluent-2 styled with a
+  sticky header, embeds the logo as a data URI, and renders the description preview from its Markdown source.
 - **Guided testing & staged rollout** — DEV-VM cycles (silent, `.exe` launcher, SYSTEM context via
   PsExec), an Intune test-group assignment, then pilot → staged production.
 - **Troubleshooting** — decodes Intune error/HRESULT codes (e.g. `0x80070001`), maps symptoms to root
@@ -145,10 +150,11 @@ psadt-deploy/
 │  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
 │  ├─ Update-PsadtSkill.ps1         self-update from GitHub
 │  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 5.5)
+│  ├─ New-PsadtReport.ps1           HTML package report (Phase 7, always)
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
 │  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 7.5)
-├─ references/   guide (App. A–H) + app-registration.md
+├─ references/   guide (App. A–H) + Report-Template.html + app-registration.md
 ├─ tests/        Pester suite for the scripts
 ├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
 ├─ config.json   (gitignored)  machine-local settings (intune.* block)
@@ -196,6 +202,13 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.5.2 - 08.06.2026
+- **HTML package report is now always generated** (upload or not) by `scripts/New-PsadtReport.ps1` from the
+  fixed template `references/Report-Template.html`. One self-contained, **bilingual (DE/EN toggle)** document
+  combining the Intune dossier + a technical package report; Fluent-2 styled, sticky shrink header, logo
+  embedded as a data URI, description preview rendered from its Markdown source. New Pester test
+  `tests/New-PsadtReport.Tests.ps1`.
 
 ### 0.5.1 - 06.06.2026
 - Self-update now decides by **commit** (git `HEAD` vs `origin/main`, or the GitHub commits-API sha vs a
