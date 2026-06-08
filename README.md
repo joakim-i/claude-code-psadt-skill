@@ -136,21 +136,23 @@ Current (what ships today):
 
 ```
 psadt-deploy/
-├─ SKILL.md                          the skill itself
-├─ README.md  ·  CHANGELOG.md  ·  LICENSE
+├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
 ├─ scripts/
-│   ├─ Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil   setup + self-healing prerequisites
-│   ├─ Update-PsadtSkill.ps1                                        self-update from GitHub (check + apply)
-│   ├─ Get-WinGetModule.ps1                                         opt-in WinGet extension provisioning
-│   ├─ Invoke-PsadtSystemTest.ps1                                   opt-in SYSTEM test loop (Phase 5.5)
-│   ├─ New-PsadtEntraApp.ps1                                        one-time Entra app bootstrap (WAM, cert/secret)
-│   ├─ Get-GraphToken.ps1                                           app-only Graph token (cert or DPAPI secret)
-│   └─ Invoke-IntuneWin32Upload.ps1                                 direct Intune upload (Phase 7.5)
-├─ references/                       PSADTv4-Deployment-Guide.md (App. A–H) · app-registration.md
-├─ tests/                            Pester suite for the helper scripts
-├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe + PSAppDeployToolkit.WinGet
-├─ config.json   (gitignored)        machine-local settings (incl. the `intune.*` block)
-└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret (only when not using cert auth)
+│  ├─ Get-PsadtConfig.ps1           config read
+│  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret)
+│  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
+│  ├─ Get-IntuneWinAppUtil.ps1      content-prep tool (self-heal)
+│  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
+│  ├─ Update-PsadtSkill.ps1         self-update from GitHub
+│  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 5.5)
+│  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
+│  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
+│  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 7.5)
+├─ references/   guide (App. A–H) + app-registration.md
+├─ tests/        Pester suite for the scripts
+├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
+├─ config.json   (gitignored)  machine-local settings (intune.* block)
+└─ secret.dpapi  (gitignored)  DPAPI client secret (only without cert auth)
 ```
 
 ## Status
