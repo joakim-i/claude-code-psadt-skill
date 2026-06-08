@@ -54,9 +54,14 @@ description until a task makes it relevant, then the full body loads on demand.
 - **App logo auto-fetch** — finds and downloads the **real** application logo (official vendor source or
   Wikimedia Commons) as a high-resolution PNG, verifies actual pixel transparency *and* visually confirms
   the brand. Never ships the PSADT default `AppIcon.png` (the upload script blocks it by hash).
-- **Deliverable dossier** — produces the Intune metadata, return-code map, detection rule, and a
-  ready-to-paste **Markdown** app description for the Company Portal field (the dossier document itself
-  is HTML; the Intune description field supports only Markdown, not HTML).
+- **HTML package report — always generated** — every finished package gets a single self-contained report
+  (`Intune-Dossier.html`), **whether or not it is uploaded to Intune**. Built by `scripts/New-PsadtReport.ps1`
+  from the fixed template `references/Report-Template.html` (never hand-assembled). It combines the **Intune
+  dossier** (App Info, return-code map, detection rule, requirements, assignments, and a ready-to-paste
+  **Markdown** app description for the Company-Portal field) with a **technical package report** (the three
+  deployment hooks, PSADT cmdlets used, pre-flight + SYSTEM-test results, logo/`.intunewin` verification). The
+  document is **bilingual with a DE/EN toggle** (and stays browser-translatable), Fluent-2 styled with a
+  sticky header, embeds the logo as a data URI, and renders the description preview from its Markdown source.
 - **Guided testing & staged rollout** — DEV-VM cycles (silent, `.exe` launcher, SYSTEM context via
   PsExec), an Intune test-group assignment, then pilot → staged production.
 - **Troubleshooting** — decodes Intune error/HRESULT codes (e.g. `0x80070001`), maps symptoms to root
@@ -73,6 +78,11 @@ description until a task makes it relevant, then the full body loads on demand.
   **certificate** (preferred; no secret at rest, JWT client-assertion auth) or a DPAPI-encrypted client
   secret. Read-only dry-run → confirm → upload. Fills the full App-information tab; **never deletes an older
   version** (new versions coexist, with optional supersedence wiring); never auto-assigns categories/notes/groups.
+
+- **Self-update** — `scripts/Update-PsadtSkill.ps1` checks GitHub for a newer skill version, shows what's new,
+  and updates in place on your confirmation (`git pull` for a clone, otherwise a branch-zip overwrite of the
+  tracked files only — your `config.json` / `secret.dpapi` / `tools/` are never touched). Say *"update skill"*,
+  *"/update-skill"*, or *"psadt update"*.
 
 > Planned features (GitHub package sync) live in the [Roadmap](#roadmap).
 
@@ -131,20 +141,24 @@ Current (what ships today):
 
 ```
 psadt-deploy/
-├─ SKILL.md                          the skill itself
-├─ README.md  ·  CHANGELOG.md  ·  LICENSE
+├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
 ├─ scripts/
-│   ├─ Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil   setup + self-healing prerequisites
-│   ├─ Get-WinGetModule.ps1                                         opt-in WinGet extension provisioning
-│   ├─ Invoke-PsadtSystemTest.ps1                                   opt-in SYSTEM test loop (Phase 5.5)
-│   ├─ New-PsadtEntraApp.ps1                                        one-time Entra app bootstrap (WAM, cert/secret)
-│   ├─ Get-GraphToken.ps1                                           app-only Graph token (cert or DPAPI secret)
-│   └─ Invoke-IntuneWin32Upload.ps1                                 direct Intune upload (Phase 7.5)
-├─ references/                       PSADTv4-Deployment-Guide.md (App. A–H) · app-registration.md
-├─ tests/                            Pester suite for the helper scripts
-├─ tools/        (gitignored)        auto-downloaded IntuneWinAppUtil.exe + PSAppDeployToolkit.WinGet
-├─ config.json   (gitignored)        machine-local settings (incl. the `intune.*` block)
-└─ secret.dpapi  (gitignored)        DPAPI-encrypted client secret (only when not using cert auth)
+│  ├─ Get-PsadtConfig.ps1           config read
+│  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret)
+│  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
+│  ├─ Get-IntuneWinAppUtil.ps1      content-prep tool (self-heal)
+│  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
+│  ├─ Update-PsadtSkill.ps1         self-update from GitHub
+│  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 5.5)
+│  ├─ New-PsadtReport.ps1           HTML package report (Phase 7, always)
+│  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
+│  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
+│  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 7.5)
+├─ references/   guide (App. A–H) + Report-Template.html + app-registration.md
+├─ tests/        Pester suite for the scripts
+├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
+├─ config.json   (gitignored)  machine-local settings (intune.* block)
+└─ secret.dpapi  (gitignored)  DPAPI client secret (only without cert auth)
 ```
 
 ## Status
@@ -188,6 +202,24 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.5.2 - 08.06.2026
+- **HTML package report is now always generated** (upload or not) by `scripts/New-PsadtReport.ps1` from the
+  fixed template `references/Report-Template.html`. One self-contained, **bilingual (DE/EN toggle)** document
+  combining the Intune dossier + a technical package report; Fluent-2 styled, sticky shrink header, logo
+  embedded as a data URI, description preview rendered from its Markdown source. New Pester test
+  `tests/New-PsadtReport.Tests.ps1`.
+
+### 0.5.1 - 06.06.2026
+- Self-update now decides by **commit** (git `HEAD` vs `origin/main`, or the GitHub commits-API sha vs a
+  recorded `tooling.skillCommit`) instead of the CHANGELOG version — no more CDN lag / circular version reads.
+- README project-structure tree compacted so it renders without horizontal scroll.
+
+### 0.5.0 - 06.06.2026
+- **Skill self-update** — `scripts/Update-PsadtSkill.ps1` checks GitHub for a newer version, shows what's new,
+  and updates in place on confirmation (`git pull` for a clone, else branch-zip overwrite of tracked files
+  only; `config.json` / `secret.dpapi` / `tools/` preserved). Triggers: *"update skill"*, *"/update-skill"*,
+  *"psadt update"*.
 
 ### 0.4.0 - 06.06.2026
 - **WinGet packaging support** (strictly opt-in, never the default) + **certificate-based auth** for the Phase 7.5

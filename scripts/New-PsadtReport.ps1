@@ -1,0 +1,407 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Generate the combined PSADT package report (Intune dossier + technical package report)
+    as a single self-contained HTML file from references/Report-Template.html.
+
+.DESCRIPTION
+    Fills the tokenized report template with package metadata and writes Intune-Dossier.html.
+    The report is ALWAYS produced for a finished package - regardless of whether the package is
+    uploaded to Intune (Phase 7.5) or not. The output is self-contained: the logo is embedded as
+    a base64 data URI, the description preview is rendered client-side from its Markdown source,
+    and the whole document switches between DE/EN in the browser (data-de/data-en).
+
+    The script is data-driven: pass a -Metadata hashtable (or -MetadataPath to a JSON file). Every
+    field has a sensible default so a minimal call still yields a complete, valid report. Variable
+    length sections (return codes, cmdlets, deployment-hook bullets, pre-flight checks, SYSTEM-test
+    rows, assignments) are built from arrays.
+
+    Language note: this script is ASCII-clean. German default strings use HTML entities (e.g.
+    &ouml;, &middot;); real umlauts only ever come in through runtime metadata (the description
+    Markdown), and the output file is written as UTF-8.
+
+.PARAMETER Metadata
+    Hashtable with the package metadata. See the README / SKILL.md Appendix F for the full key list.
+
+.PARAMETER MetadataPath
+    Path to a JSON file with the same shape as -Metadata (alternative to -Metadata).
+
+.PARAMETER OutputPath
+    Target HTML file. Default: '<current dir>\Intune-Dossier.html'.
+
+.PARAMETER TemplatePath
+    Path to the report template. Default: references/Report-Template.html next to this script.
+
+.PARAMETER LogoPath
+    Path to the real app logo (PNG/SVG/JPG). Embedded as a base64 data URI. If omitted, a neutral
+    initials tile is generated so the header is never empty.
+
+.PARAMETER PassThru
+    Return the generated file as a System.IO.FileInfo object.
+
+.NOTES
+    Author : PSADT v4.x Deployment Skill
+    Part of the psadt-deploy skill. See SKILL.md Phase 7.
+#>
+[CmdletBinding(DefaultParameterSetName = 'Hash')]
+param(
+    [Parameter(ParameterSetName = 'Hash')]
+    [hashtable]$Metadata = @{},
+
+    [Parameter(ParameterSetName = 'Json', Mandatory)]
+    [string]$MetadataPath,
+
+    [string]$OutputPath,
+
+    [string]$TemplatePath,
+
+    [string]$LogoPath,
+
+    [switch]$PassThru
+)
+
+$ErrorActionPreference = 'Stop'
+
+# ----------------------------------------------------------------------------- resolve inputs
+if ($PSCmdlet.ParameterSetName -eq 'Json') {
+    if (-not (Test-Path $MetadataPath)) { throw "MetadataPath not found: $MetadataPath" }
+    $json = Get-Content -LiteralPath $MetadataPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    # convert PSCustomObject -> hashtable
+    $Metadata = @{}
+    foreach ($p in $json.PSObject.Properties) { $Metadata[$p.Name] = $p.Value }
+}
+
+if (-not $TemplatePath) {
+    $TemplatePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'references\Report-Template.html'
+}
+if (-not (Test-Path $TemplatePath)) { throw "Template not found: $TemplatePath" }
+
+if (-not $OutputPath) { $OutputPath = Join-Path (Get-Location) 'Intune-Dossier.html' }
+
+# ----------------------------------------------------------------------------- helpers
+function Get-Val {
+    param($Key, $Default)
+    if ($Metadata.ContainsKey($Key) -and $null -ne $Metadata[$Key]) { return $Metadata[$Key] }
+    return $Default
+}
+function Esc {
+    param($s)
+    if ($null -eq $s) { return '' }
+    return ([string]$s).Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
+}
+# Attribute-escape an ALREADY-HTML string (entities preserved, only quotes escaped).
+function AttrHtml { param($s) if ($null -eq $s) { return '' } return ([string]$s).Replace('"', '&quot;') }
+function Codei { param($s) return "<code>$(Esc $s)</code>" }
+# bilingual <span> from HTML-ready strings (entities allowed)
+function Bspan { param($de, $en) return "<span data-de=`"$(AttrHtml $de)`" data-en=`"$(AttrHtml $en)`">$de</span>" }
+function Badge {
+    param($cls, $de, $en)
+    if ($PSBoundParameters.ContainsKey('en') -and $en) {
+        return "<span class=`"badge $cls`" data-de=`"$(AttrHtml $de)`" data-en=`"$(AttrHtml $en)`">$de</span>"
+    }
+    return "<span class=`"badge $cls`">$de</span>"
+}
+function NoteHtml {
+    param($de, $en)
+    if ($PSBoundParameters.ContainsKey('en') -and $en) {
+        return "<span class=`"note`" data-de=`"$(AttrHtml $de)`" data-en=`"$(AttrHtml $en)`">$de</span>"
+    }
+    return "<span class=`"note`">$de</span>"
+}
+
+# ----------------------------------------------------------------------------- logo data URI
+function Get-LogoDataUri {
+    param($Path, $AppName)
+    if ($Path -and (Test-Path $Path)) {
+        $ext = ([System.IO.Path]::GetExtension($Path)).TrimStart('.').ToLowerInvariant()
+        $mime = switch ($ext) {
+            'png'  { 'image/png' }
+            'jpg'  { 'image/jpeg' }
+            'jpeg' { 'image/jpeg' }
+            'gif'  { 'image/gif' }
+            'svg'  { 'image/svg+xml' }
+            default { 'image/png' }
+        }
+        $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $Path).Path)
+        return "data:$mime;base64,$([System.Convert]::ToBase64String($bytes))"
+    }
+    # fallback: neutral initials tile (so the header is never empty)
+    $initials = -join (($AppName -split '\s+' | Where-Object { $_ } | Select-Object -First 2) |
+        ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() })
+    if (-not $initials) { $initials = 'AP' }
+    $svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>" +
+           "<text x='60' y='78' font-family='Segoe UI,Arial,sans-serif' font-size='56' font-weight='700' " +
+           "fill='%230F6CBD' text-anchor='middle'>$initials</text></svg>"
+    return "data:image/svg+xml,$svg"
+}
+
+# ----------------------------------------------------------------------------- scalar values
+$lang          = Get-Val 'Lang' 'de'
+$appName       = Get-Val 'AppName' 'App'
+$appVersion    = Get-Val 'AppVersion' '0.0.0'
+$publisher     = Get-Val 'Publisher' ''
+$developer     = Get-Val 'Developer' $publisher
+$owner         = Get-Val 'Owner' ''
+$pkgRev        = Get-Val 'PkgRev' '01'
+$scriptVersion = Get-Val 'ScriptVersion' '0.1'
+$created       = Get-Val 'Created' (Get-Date -Format 'yyyy-MM-dd')
+$author        = Get-Val 'Author' ''
+$psadtVersion  = Get-Val 'PsadtVersion' '4.1.8'
+$moduleVersion = Get-Val 'ModuleVersion' $psadtVersion
+
+$subDe   = Get-Val 'SubDe' "Intune Win32 &middot; PSADT v$psadtVersion Paket-Report"
+$subEn   = Get-Val 'SubEn' "Intune Win32 &middot; PSADT v$psadtVersion package report"
+$statusDe = Get-Val 'StatusDe' 'Upload-bereit &middot; getestet'
+$statusEn = Get-Val 'StatusEn' 'Ready to upload &middot; tested'
+
+# ----------------------------------------------------------------------------- app-info cells
+$cat = Get-Val 'Category' $null
+if ([string]::IsNullOrWhiteSpace([string]$cat)) {
+    $vCategory = (Badge 'b-neut' 'nicht vorbelegt' 'not preset') +
+                 (NoteHtml 'Wird vom Anwender/Org gesetzt &ndash; nie automatisch.' 'Set by the user/org &ndash; never automatically.')
+} else {
+    $vCategory = Badge 'b-info' (Esc $cat) (Esc $cat)
+}
+
+$featured = [bool](Get-Val 'Featured' $false)
+$vFeatured = if ($featured) { Badge 'b-info' 'Ja' 'Yes' } else { Badge 'b-neut' 'Nein' 'No' }
+
+$infoUrl    = Get-Val 'InfoUrl' ''
+$privacyUrl = Get-Val 'PrivacyUrl' ''
+$vInfoUrl    = if ($infoUrl) { Codei $infoUrl } else { Bspan 'nicht gesetzt' 'not set' }
+$vPrivacyUrl = if ($privacyUrl) { Codei $privacyUrl } else { Bspan 'nicht gesetzt' 'not set' }
+$vNotes = Esc (Get-Val 'Notes' "PSADT v$psadtVersion &middot; pkg rev $pkgRev &middot; $created")
+
+$logoLeaf = ''
+if ($LogoPath) { $logoLeaf = Split-Path $LogoPath -Leaf }
+$logoSource = Get-Val 'LogoSource' $logoLeaf
+$logoGuardOk = [bool](Get-Val 'LogoGuardOk' $true)
+$vLogo = (Badge 'b-ok' 'echtes App-Logo' 'real app logo') +
+         (NoteHtml (Esc $logoSource) (Esc $logoSource))
+
+# ----------------------------------------------------------------------------- program cells
+$vInstallCmd   = Codei (Get-Val 'InstallCmd' 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent')
+$vUninstallCmd = Codei (Get-Val 'UninstallCmd' 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent')
+$vInstallBehavior = Badge 'b-ok' (Esc (Get-Val 'InstallBehavior' 'System')) (Esc (Get-Val 'InstallBehavior' 'System'))
+$restartDe = Get-Val 'RestartBehaviorDe' 'Determine behavior based on return codes'
+$restartEn = Get-Val 'RestartBehaviorEn' 'Determine behavior based on return codes'
+$restartNoteDe = Get-Val 'RestartNoteDe' ''
+$restartNoteEn = Get-Val 'RestartNoteEn' ''
+$vRestart = (Bspan $restartDe $restartEn)
+if ($restartNoteDe) { $vRestart += ' ' + (NoteHtml $restartNoteDe $restartNoteEn) }
+$installTime = Get-Val 'InstallTimeMin' 60
+$vInstallTime = Bspan "$installTime Minuten" "$installTime minutes"
+$allowUninstall = [bool](Get-Val 'AllowUninstall' $true)
+$vAllowUninstall = if ($allowUninstall) { Badge 'b-ok' 'Ja' 'Yes' } else { Badge 'b-neut' 'Nein' 'No' }
+
+# ----------------------------------------------------------------------------- requirements / detection
+$vOsArch = Esc (Get-Val 'OsArch' 'x64')
+$vMinOs  = Esc (Get-Val 'MinOs' 'Windows 10 22H2')
+$vDisk   = Esc (Get-Val 'DiskMb' '')
+$vMemory = $m = Get-Val 'MemoryMb' ''
+$vMemory = if ($m) { Esc $m } else { (Bspan 'nicht relevant' 'not relevant') }
+
+$vRuleFormat   = Esc (Get-Val 'RuleFormat' 'Custom Detection Script')
+$detectScript  = Get-Val 'DetectScript' ''
+$vDetectScript = if ($detectScript) { Codei $detectScript } else { Bspan 'n. z.' 'n/a' }
+$runAs32 = [bool](Get-Val 'RunAs32' $false)
+$vRun32 = if ($runAs32) { Bspan 'Ja' 'Yes' } else { Bspan 'Nein' 'No' }
+$sigCheck = [bool](Get-Val 'SignatureCheck' $false)
+$vSigCheck = if ($sigCheck) { Bspan 'Ja' 'Yes' } else { Bspan 'Nein' 'No' }
+
+# ----------------------------------------------------------------------------- deps / supersedence
+$deps = Get-Val 'Dependencies' $null
+$vDeps = if ([string]::IsNullOrWhiteSpace([string]$deps)) {
+    (Badge 'b-neut' 'keine' 'none') + (NoteHtml (Get-Val 'DependenciesNoteDe' '') (Get-Val 'DependenciesNoteEn' ''))
+} else { Esc $deps }
+$sup = Get-Val 'Supersedence' $null
+$vSup = if ([string]::IsNullOrWhiteSpace([string]$sup)) {
+    (Badge 'b-neut' 'keine' 'none') +
+    (NoteHtml (Get-Val 'SupersedenceNoteDe' 'erste Version &ndash; neue Versionen koexistieren sp&auml;ter (kein L&ouml;schen)') (Get-Val 'SupersedenceNoteEn' 'first version &ndash; new versions coexist later (no deletion)'))
+} else { Esc $sup }
+
+# ----------------------------------------------------------------------------- logo / intunewin
+$vLogoSource     = Bspan (Esc $logoSource) (Esc $logoSource)
+$vLogoResolution = Get-Val 'LogoResolution' ''
+$vLogoResolution = if ($vLogoResolution) { (Esc $vLogoResolution) + ' ' + (Badge 'b-ok' 'verifiziert' 'verified') } else { (Bspan 'nicht gepr&uuml;ft' 'not checked') }
+$vLogoGuard = if ($logoGuardOk) {
+    (Badge 'b-ok' 'kein PSADT-AppIcon.png' 'no PSADT AppIcon.png') + (NoteHtml 'SHA256-Blocklist bestanden' 'SHA256 blocklist passed')
+} else { Badge 'b-fail' 'PSADT-Default!' 'PSADT default!' }
+$vIntunewin = $iw = Get-Val 'IntuneWin' ''
+$vIntunewin = if ($iw) { Codei $iw } else { Bspan 'noch nicht gepackt' 'not packed yet' }
+$vSetupFile = (Codei (Get-Val 'SetupFile' 'Invoke-AppDeployToolkit.exe')) + ' ' + (Badge 'b-ok' 'korrekt' 'correct')
+$vLocation = $loc = Get-Val 'Location' ''
+$vLocation = if ($loc) { Codei $loc } else { Bspan 'Output-Ordner der App' 'app output folder' }
+
+# ----------------------------------------------------------------------------- description markdown
+$descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n_Beschreibung folgt._")
+$descMdEn = Esc (Get-Val 'DescMdEn' "**$appName $appVersion**`n`n_Description to follow._")
+
+# ----------------------------------------------------------------------------- return codes
+$defaultRc = @(
+    @{ Code = '0';     Cls = 'b-ok';   Label = 'Success';     De = 'Erfolgreich'; En = 'Successful' }
+    @{ Code = '1707';  Cls = 'b-ok';   Label = 'Success';     De = 'Erfolgreich'; En = 'Successful' }
+    @{ Code = '3010';  Cls = 'b-warn'; Label = 'Soft reboot'; De = 'Neustart empfohlen'; En = 'Restart recommended' }
+    @{ Code = '1641';  Cls = 'b-warn'; Label = 'Hard reboot'; De = 'Neustart wird ausgel&ouml;st'; En = 'Restart is triggered' }
+    @{ Code = '1618';  Cls = 'b-neut'; Label = 'Retry';       De = 'Anderer Installer l&auml;uft, erneut versuchen'; En = 'Another installer running, retry' }
+    @{ Code = '60001'; Cls = 'b-fail'; Label = 'Failed';      De = 'Laufzeitfehler in Install-ADTDeployment'; En = 'Runtime error in Install-ADTDeployment' }
+    @{ Code = '60008'; Cls = 'b-fail'; Label = 'Failed';      De = 'Init/Import-Module fehlgeschlagen'; En = 'Init/Import-Module failed' }
+)
+$rc = Get-Val 'ReturnCodes' $defaultRc
+$rcRows = foreach ($r in $rc) {
+    "            <tr><td><code>$(Esc $r.Code)</code></td><td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span></td><td data-de=`"$(AttrHtml $r.De)`" data-en=`"$(AttrHtml $r.En)`">$($r.De)</td></tr>"
+}
+$rcRows = $rcRows -join "`n"
+
+# ----------------------------------------------------------------------------- assignments
+$asg = Get-Val 'Assignments' @()
+if ($asg.Count -eq 0) {
+    $asgRows = "            <tr><td colspan=`"3`"><span data-de=`"noch nicht zugewiesen &ndash; bewusste Entscheidung im Admin Center`" data-en=`"not yet assigned &ndash; a deliberate decision in the Admin Center`">noch nicht zugewiesen</span></td></tr>"
+} else {
+    $asgRows = @(foreach ($a in $asg) {
+        $tcls = switch ($a.Type) { 'Required' { 'b-info' } 'Uninstall' { 'b-fail' } default { 'b-neut' } }
+        "            <tr><td>$(Esc $a.Group)</td><td><span class=`"badge $tcls`">$(Esc $a.Type)</span></td><td>$(Esc $a.Availability)</td></tr>"
+    }) -join "`n"
+}
+
+# ----------------------------------------------------------------------------- hooks
+function Format-HookItems {
+    param($Items)
+    if (-not $Items -or $Items.Count -eq 0) { return '' }
+    @(foreach ($it in $Items) {
+        $de = $null; $en = $null
+        if ($it -is [hashtable] -and $it.ContainsKey('De')) { $de = $it['De']; $en = $it['En'] }
+        elseif ($it -isnot [string] -and $it.PSObject -and $it.PSObject.Properties['De']) { $de = $it.De; $en = $it.En }
+        if ($de) { "              <li data-de=`"$(AttrHtml $de)`" data-en=`"$(AttrHtml $en)`">$de</li>" }
+        else { "              <li>$(Esc ([string]$it))</li>" }
+    }) -join "`n"
+}
+$hookInstall = Format-HookItems (Get-Val 'HookInstall' @(
+    'Show-ADTInstallationWelcome (CloseProcesses, CheckDiskSpace)',
+    'Start-ADTMsiProcess / Start-ADTProcess (silent)',
+    @{ De = 'Startmen&uuml;-Verkn&uuml;pfung (kein Desktop)'; En = 'Start-menu shortcut (no desktop)' }
+))
+$hookUninstall = Format-HookItems (Get-Val 'HookUninstall' @(
+    'Start-ADTMsiProcess -Action Uninstall / Remove-ADTApplication',
+    @{ De = 'App-spezifische Leftovers entfernen'; En = 'Remove app-specific leftovers' },
+    @{ De = 'Nutzerdaten bleiben erhalten'; En = 'User data is preserved' }
+))
+$hookRepair = Format-HookItems (Get-Val 'HookRepair' @(
+    'Start-ADTMsiProcess -Action Repair (/fa) oder Reinstall',
+    @{ De = 'Dateien + Verkn&uuml;pfungen werden neu gesetzt'; En = 'Files + shortcuts are re-applied' }
+))
+
+# ----------------------------------------------------------------------------- cmdlets
+$cmds = Get-Val 'Cmdlets' @('Show-ADTInstallationWelcome', 'Start-ADTMsiProcess', 'Write-ADTLogEntry', 'Close-ADTSession')
+$cmdChips = @(foreach ($c in $cmds) { "          <span class=`"chip`">$(Esc $c)</span>" }) -join "`n"
+
+# ----------------------------------------------------------------------------- pre-flight
+$defaultPf = @(
+    @{ Title = 'Encoding'; Cls = 'ok'; De = 'UTF-8 mit BOM &middot; 0 Nicht-ASCII-Zeichen im Skript'; En = 'UTF-8 with BOM &middot; 0 non-ASCII characters in the script'; BDe = 'bestanden'; BEn = 'passed' }
+    @{ Title = 'Parser'; Cls = 'ok'; De = 'PARSE_OK &middot; keine Syntaxfehler'; En = 'PARSE_OK &middot; no syntax errors'; BDe = 'bestanden'; BEn = 'passed' }
+    @{ Title = 'Acid-Test Install'; Cls = 'ok'; De = 'Launcher findet und l&auml;dt das Skript'; En = 'Launcher finds and loads the script'; BDe = 'bestanden'; BEn = 'passed' }
+    @{ Title = 'Acid-Test Uninstall'; Cls = 'ok'; De = 'Launcher OK'; En = 'Launcher OK'; BDe = 'bestanden'; BEn = 'passed' }
+    @{ Title = 'Acid-Test Repair'; Cls = 'ok'; De = 'Launcher OK'; En = 'Launcher OK'; BDe = 'bestanden'; BEn = 'passed' }
+    @{ Title = 'v3-Cmdlet-Scan'; Cls = 'ok'; De = 'keine v3-Altnamen gefunden'; En = 'no v3 legacy names found'; BDe = 'sauber'; BEn = 'clean' }
+)
+$pf = Get-Val 'Preflight' $defaultPf
+$pfChecks = @(foreach ($c in $pf) {
+    $sym = switch ($c.Cls) { 'ok' { '&#10003;' } 'warn' { '!' } default { '&times;' } }
+    $bcls = switch ($c.Cls) { 'ok' { 'b-ok' } 'warn' { 'b-warn' } default { 'b-fail' } }
+    "          <div class=`"check`"><span class=`"ci $($c.Cls)`">$sym</span><div><div class=`"ct`">$(Esc $c.Title)</div><div class=`"cd`" data-de=`"$(AttrHtml $c.De)`" data-en=`"$(AttrHtml $c.En)`">$($c.De)</div></div><span class=`"badge $bcls`" data-de=`"$(AttrHtml $c.BDe)`" data-en=`"$(AttrHtml $c.BEn)`">$($c.BDe)</span></div>"
+}) -join "`n"
+
+# ----------------------------------------------------------------------------- system test
+$defaultSt = @(
+    @{ StepDe = '1. Install (als SYSTEM)'; StepEn = '1. Install (as SYSTEM)'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'Success' }
+    @{ StepDe = '2. Uninstall'; StepEn = '2. Uninstall'; Exit = '0'; Detection = 'not-installed &middot; leftover-clean'; Cls = 'b-ok'; Result = 'Success' }
+    @{ StepDe = '3. Reinstall'; StepEn = '3. Reinstall'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'Success' }
+)
+$st = Get-Val 'SystemTest' $defaultSt
+$stRows = @(foreach ($s in $st) {
+    "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td><td>$($s.Detection)</td><td><span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span></td></tr>"
+}) -join "`n"
+$stNoteDe = Get-Val 'SystemTestNoteDe' 'Install &rarr; Uninstall &rarr; Reinstall validiert. PSADT-Logs im Output-Ordner abgelegt (Audit-Trail).'
+$stNoteEn = Get-Val 'SystemTestNoteEn' 'Install &rarr; uninstall &rarr; reinstall validated. PSADT logs stored in the output folder (audit trail).'
+
+# ----------------------------------------------------------------------------- token map
+$logoSrc = Get-LogoDataUri -Path $LogoPath -AppName $appName
+
+$tokens = [ordered]@{
+    'LANG'              = $lang
+    'APP_NAME'          = (Esc $appName)
+    'APP_VERSION'       = (Esc $appVersion)
+    'PUBLISHER'         = (Esc $publisher)
+    'PKG_REV'           = (Esc $pkgRev)
+    'SCRIPT_VERSION'    = (Esc $scriptVersion)
+    'CREATED'           = (Esc $created)
+    'AUTHOR'            = (Esc $author)
+    'MODULE_VERSION'    = (Esc $moduleVersion)
+    'SUB_DE'            = (AttrHtml $subDe)
+    'SUB_EN'            = (AttrHtml $subEn)
+    'STATUS_DE'         = (AttrHtml $statusDe)
+    'STATUS_EN'         = (AttrHtml $statusEn)
+    'LOGO_IMG_SRC'      = $logoSrc
+    'V_DEVELOPER'       = (Esc $developer)
+    'V_OWNER'           = (Esc $owner)
+    'V_CATEGORY'        = $vCategory
+    'V_FEATURED'        = $vFeatured
+    'V_INFO_URL'        = $vInfoUrl
+    'V_PRIVACY_URL'     = $vPrivacyUrl
+    'V_NOTES'           = $vNotes
+    'V_LOGO'            = $vLogo
+    'DESC_MD_DE'        = $descMdDe
+    'DESC_MD_EN'        = $descMdEn
+    'V_INSTALL_CMD'     = $vInstallCmd
+    'V_UNINSTALL_CMD'   = $vUninstallCmd
+    'V_INSTALL_BEHAVIOR' = $vInstallBehavior
+    'V_RESTART_BEHAVIOR' = $vRestart
+    'V_INSTALL_TIME'    = $vInstallTime
+    'V_ALLOW_UNINSTALL' = $vAllowUninstall
+    'RETURN_CODE_ROWS'  = $rcRows
+    'V_OS_ARCH'         = $vOsArch
+    'V_MIN_OS'          = $vMinOs
+    'V_DISK'            = $vDisk
+    'V_MEMORY'          = $vMemory
+    'V_RULE_FORMAT'     = $vRuleFormat
+    'V_DETECT_SCRIPT'   = $vDetectScript
+    'V_RUN_32'          = $vRun32
+    'V_SIG_CHECK'       = $vSigCheck
+    'V_DEPENDENCIES'    = $vDeps
+    'V_SUPERSEDENCE'    = $vSup
+    'ASSIGNMENT_ROWS'   = $asgRows
+    'HOOK_INSTALL_ITEMS' = $hookInstall
+    'HOOK_UNINSTALL_ITEMS' = $hookUninstall
+    'HOOK_REPAIR_ITEMS' = $hookRepair
+    'CMDLET_CHIPS'      = $cmdChips
+    'PREFLIGHT_CHECKS'  = $pfChecks
+    'SYSTEMTEST_ROWS'   = $stRows
+    'SYSTEMTEST_NOTE_DE' = (AttrHtml $stNoteDe)
+    'SYSTEMTEST_NOTE_EN' = (AttrHtml $stNoteEn)
+    'V_LOGO_SOURCE'     = $vLogoSource
+    'V_LOGO_RESOLUTION' = $vLogoResolution
+    'V_LOGO_GUARD'      = $vLogoGuard
+    'V_INTUNEWIN'       = $vIntunewin
+    'V_SETUPFILE'       = $vSetupFile
+    'V_LOCATION'        = $vLocation
+}
+
+# ----------------------------------------------------------------------------- render
+$html = Get-Content -LiteralPath $TemplatePath -Raw -Encoding UTF8
+foreach ($k in $tokens.Keys) {
+    $html = $html.Replace("{{$k}}", [string]$tokens[$k])
+}
+
+# any leftover tokens -> warn + blank (keeps the report clean if the template gains a token)
+$leftover = [regex]::Matches($html, '\{\{[A-Z0-9_]+\}\}') | ForEach-Object { $_.Value } | Select-Object -Unique
+if ($leftover) {
+    Write-Warning "Unfilled template tokens blanked: $($leftover -join ', ')"
+    $html = [regex]::Replace($html, '\{\{[A-Z0-9_]+\}\}', '')
+}
+
+$dir = Split-Path $OutputPath -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+[System.IO.File]::WriteAllText($OutputPath, $html, [System.Text.UTF8Encoding]::new($false))
+
+Write-Verbose "Report written: $OutputPath"
+if ($PassThru) { Get-Item -LiteralPath $OutputPath }

@@ -1,6 +1,6 @@
 ---
 name: psadt-deploy
-description: Use this skill when the user wants to build, package, test, troubleshoot, or deploy a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 app package. Triggers include "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", or when working inside a folder that contains Invoke-AppDeployToolkit.ps1 / .exe or a PSAppDeployToolkit module.
+description: Use this skill when the user wants to build, package, test, troubleshoot, or deploy a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 app package. Triggers include "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", or when working inside a folder that contains Invoke-AppDeployToolkit.ps1 / .exe or a PSAppDeployToolkit module. Also use it to self-update the skill: "update skill", "/update-skill", "psadt update", "check for skill updates".
 ---
 
 # PSADT v4.x Deployment Skill
@@ -9,12 +9,12 @@ description: Use this skill when the user wants to build, package, test, trouble
 
 This skill guides the complete lifecycle of a **PSADT v4.x Intune Win32 package** - from the first conversation to a tested, upload-ready `.intunewin`. It is intended for **build, packaging, test, troubleshooting, and deployment** (triggers include "PSADT paket bauen", "intune paket fuer <App>", "PSADT v4 deploy", or working in a folder that contains `Invoke-AppDeployToolkit.ps1`).
 
-**Workflow (10 phases):** 1) Intake (8 kill questions, ALWAYS via click options) - 2) Web research (PSADT version + command changes, silent/uninstall/repair of the app, Intune pitfalls) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing all three deployment types (Install/Uninstall/Repair) - 5) Pre-flight (encoding/parse/acid test) - 5.5) optional SYSTEM test loop - 6) Packaging (IntuneWinAppUtil) - 7) Dossier + REAL logo - 7.5) optional direct Intune upload via Graph (win32LobApp, coexistence-safe) - 8) Test - 9) Rollout.
+**Workflow (10 phases):** 1) Intake (8 kill questions, ALWAYS via click options) - 2) Web research (PSADT version + command changes, silent/uninstall/repair of the app, Intune pitfalls) - 3) Scaffold (`New-ADTTemplate`) - 4) Customizing all three deployment types (Install/Uninstall/Repair) - 5) Pre-flight (encoding/parse/acid test) - 5.5) optional SYSTEM test loop - 6) Packaging (IntuneWinAppUtil) - 7) **HTML package report (ALWAYS, via `New-PsadtReport.ps1`)** + REAL logo - 7.5) optional direct Intune upload via Graph (win32LobApp, coexistence-safe) - 8) Test - 9) Rollout.
 
 **Binding conventions (details in the block below):**
 - ALWAYS ask the user via `AskUserQuestion` (click options), never as free text
 - Output `.intunewin` ALWAYS centrally to `paths.outputRoot`/<App>\ - the output root is configured by the user during setup (NO hard-coded default); read it from config via `Get-PsadtConfig`
-- Intune dossier ALWAYS `Intune-Dossier.html` (full HTML), language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
+- **HTML package report ALWAYS generated for every package — whether uploaded to Intune or not (BINDING, never skipped).** Produce it from the fixed template `references/Report-Template.html` via `scripts/New-PsadtReport.ps1`, output ALWAYS `Intune-Dossier.html` in `Output\<App>\`. It is ONE self-contained, bilingual (DE/EN toggle) document combining the **Intune dossier** + a **technical package report**; language from `language.dossier` (**default German with real umlauts**) - BUT the **app description block** for the Company Portal field is **Markdown** (that field supports only Markdown, not HTML); scripts on the other hand **English/ASCII**
 - Author ALWAYS assembled from config (`author.person` + `author.company`, set during setup - no hard-coded default); first script version `0.1`; changelog in the `.NOTES` header is mandatory
 - Obtain the **REAL** app logo (PNG, high resolution) -> `Assets\` + `Output\<App>\` — NEVER the PSADT default `AppIcon.png`
 - Start Menu entries only, NO desktop icons
@@ -36,7 +36,7 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
 ## Conventions (BINDING)
 
 - **Language - split by target:**
-  - **Intune dossier (`Intune-Dossier.html`, full HTML) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). **Language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The dossier language is a config value, not a fixed rule.
+  - **HTML package report (`Intune-Dossier.html`, always generated via `New-PsadtReport.ps1` — see Phase 7) - but the app description block for the Company Portal field is Markdown** (that field supports only Markdown, not HTML). The report is a single self-contained, bilingual (DE/EN toggle) document; it carries both languages so the user can switch in the browser. **Default language from `language.dossier`, default GERMAN with real umlauts** (ä, ö, ü, ß) - this is end-user text for the Company Portal, where umlauts are correct and desired (do NOT spell out ae/oe/ue). The report's real umlauts come from the description metadata; the template stays ASCII via HTML entities and the file is written UTF-8. The dossier language is a config value, not a fixed rule.
   - **In the scripts themselves (Invoke-AppDeployToolkit.ps1, Extensions, Detection): EVERYTHING in ENGLISH** - especially all comments. Keep script strings in English too, so that no umlauts/non-ASCII end up in the PS1 (encoding cleanliness, see pre-flight). Umlauts belong ONLY in the dossier HTML, never in the script.
 - **Author ALWAYS from config:** compose `AppScriptAuthor` (in `$adtSession`) from `author.person` + `author.company`, which the user sets during setup (`Get-PsadtConfig`). No hard-coded author.
 - **Script versioning (`AppScriptVersion` in `$adtSession`):**
@@ -49,12 +49,34 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
   - 0.2 (YYYY-MM-DD, <author.person>): <what was changed>.
   ```
 
+## Self-update (check for a newer skill version)
+
+The skill can update itself from GitHub. **When the user asks** — "update skill", "/update-skill",
+"psadt update", "check for skill updates" — OR **once at the start of Phase 0 setup** (a quiet, non-blocking
+check), run:
+
+```powershell
+pwsh scripts/Update-PsadtSkill.ps1            # read-only check -> UpdateAvailable / Behind / WhatsNew / versions
+```
+The check is **commit-based** (authoritative, no CDN lag): a git clone compares `HEAD` vs `origin/<branch>`;
+otherwise the GitHub commits API sha is compared against the recorded `tooling.skillCommit`. The CHANGELOG
+version is shown only as context. If `UpdateAvailable` is true, show the user `LocalVersion -> RemoteVersion`
++ `Behind` and the `WhatsNew` (remote's top CHANGELOG section), then **ask via `AskUserQuestion`**. Only on confirmation:
+```powershell
+pwsh scripts/Update-PsadtSkill.ps1 -Apply     # git pull --ff-only (clone) OR overwrite tracked files from the branch zip
+```
+It updates only tracked content (SKILL.md, README.md, CHANGELOG.md, LICENSE, references/, scripts/, tests/);
+`config.json`, `secret.dpapi`, `tools/` and `docs/` are never touched. Never auto-apply — always ask first.
+If the check fails (offline), say so and continue; an update check must never block packaging.
+
 ## Workflow (execute in this order)
 
 ### 0. Setup (Phase 0 — run before intake)
 
 Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
+0. **Self-update check (optional, non-blocking):** run `pwsh scripts/Update-PsadtSkill.ps1`; if a newer
+   version exists, show what's new and ask whether to update (see "Self-update" above). Skip silently on error.
 1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
 2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
@@ -406,11 +428,35 @@ Get-Content "$env:TEMP\iw-check\IntuneWinPackage\Metadata\Detection.xml" | Selec
 # Must show: <SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>
 ```
 
-### 7. Intune dossier
+### 7. Package report (Intune dossier + technical report) — ALWAYS generated
 
-Use appendix F from the reference guide as a template: ALWAYS name the file **`Intune-Dossier.html`** (fixed name, NOT `<App>-IntuneDossier.html` or `Intune-App-Metadata.html` - the app name is already in the output sub-folder) and place it in the central `Output\<App>\` folder. The dossier document is **full HTML**, with ONE exception: the **app description block** is **Markdown**, because the Intune app description field for the Company Portal supports only Markdown (no HTML) - see below. Fill all tables (App Info, description (Markdown block), Program, Return Codes incl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments). Let the user review, then he/she transfers the values 1:1 into the Intune Admin Center.
+**BINDING — the HTML report is produced for EVERY finished package, whether or not it is uploaded to Intune.**
+It is never optional and never skipped. Generate it from the fixed template with the generator script — do
+NOT hand-assemble HTML per package:
 
-The dossier language follows `language.dossier` (default German), and its umlauts stay (real ä, ö, ü, ß), because it is end-user output for the Company Portal.
+```powershell
+# Fill $meta from the intake/research/test results (full key list: reference guide Appendix F).
+& scripts/New-PsadtReport.ps1 -Metadata $meta -LogoPath '<Output\<App>\<App>-Logo.png>' `
+    -OutputPath '<Output\<App>\Intune-Dossier.html'
+```
+
+- **Template:** `references/Report-Template.html` (do not fork it per app — the generator fills the tokens).
+- **Output file name ALWAYS `Intune-Dossier.html`** (fixed; the app name is already in the output sub-folder),
+  placed in the central `Output\<App>\` folder next to the `.intunewin` + detection script.
+- **One combined document, two parts:** (1) **Intune dossier** — App Info, description (Markdown block),
+  Program, Return Codes incl. 60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence,
+  Assignments; (2) **technical package report** — the three deployment hooks, the PSADT cmdlets used,
+  pre-flight results, the Phase 5.5 SYSTEM-test result, logo + `.intunewin` verification.
+- **Self-contained + bilingual:** the logo is embedded as a base64 data URI; the document carries BOTH
+  German and English (DE/EN toggle top-right, `data-de`/`data-en`) and stays browser-translatable; the
+  description **preview is rendered client-side from its Markdown source** (so preview == the Markdown you paste
+  into Intune). The Fluent-2 header is sticky and shrinks on scroll.
+- **The user reviews the report**, then (manual route) transfers the dossier values 1:1 into the Intune Admin
+  Center, or (Phase 7.5) the upload reuses the same metadata.
+
+The report language defaults to `language.dossier` (default German) and its **umlauts stay real** (ä, ö, ü, ß) —
+the report is end-user output, so the script-only ASCII rule does NOT apply to it (the template itself is
+ASCII via HTML entities; real umlauts come from the description metadata, and the file is written UTF-8).
 
 **Note: direct Graph upload is now AVAILABLE — see Phase 7.5.** The manual dossier-in-Admin-Center route remains the documented alternative.
 
@@ -665,6 +711,8 @@ Check logs in this order:
 - **Deleting / overwriting the older version when uploading a new one** - new versions COEXIST (separate app, `-OnExisting CreateNewCoexist`); never DELETE; let the user wire supersedence
 - Putting company branding in `notes`, or auto-assigning a category/featured/group - those are user/org decisions (config-driven at most), never script defaults
 - Filling only the minimum app-info fields - populate every objective field (publisher, developer, owner, version, info/privacy URL, description, logo)
+- **Skipping the HTML package report** - it is generated for EVERY package, upload or not (Phase 7, `New-PsadtReport.ps1`); "no upload" is not a reason to skip it
+- **Hand-assembling the report HTML per package** instead of filling `references/Report-Template.html` via `New-PsadtReport.ps1` - the template is fixed; only the metadata changes
 - **Uploading a package whose Install + Uninstall were not tested** - the Phase 5.5 SYSTEM test (install -> uninstall -> reinstall, green) is a BINDING prerequisite for Phase 7.5; if you can't run it, STOP and hand back to the user, never upload untested
 
 ## Reference lookup
