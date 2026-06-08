@@ -2,6 +2,18 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.5.0 — 2026-06-06 — Skill self-update
+
+### Added
+- **`scripts/Update-PsadtSkill.ps1`** (+ Pester tests): checks GitHub for a newer skill version (compares the
+  top `CHANGELOG.md` version), reports `LocalVersion` / `RemoteVersion` / `UpdateAvailable` / `WhatsNew`, and
+  on confirmation updates **in place** — `git pull --ff-only` for a clone, otherwise overwrites only the
+  tracked files (`SKILL.md`, `README.md`, `CHANGELOG.md`, `LICENSE`, `references/`, `scripts/`, `tests/`) from
+  the branch zip. `config.json`, `secret.dpapi`, `tools/` and `docs/` are never touched.
+- **SKILL.md**: a "Self-update" section + a non-blocking check at the start of Phase 0; triggers
+  "update skill" / "/update-skill" / "psadt update" / "check for skill updates". The skill always **asks**
+  before applying; an update check never blocks packaging.
+
 ## 0.4.0 — 2026-06-06 — WinGet support + certificate auth (PR #4)
 
 Contributed by **@joakim-i** (PR #4), reviewed + hardened before merge.

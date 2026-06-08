@@ -74,6 +74,11 @@ description until a task makes it relevant, then the full body loads on demand.
   secret. Read-only dry-run → confirm → upload. Fills the full App-information tab; **never deletes an older
   version** (new versions coexist, with optional supersedence wiring); never auto-assigns categories/notes/groups.
 
+- **Self-update** — `scripts/Update-PsadtSkill.ps1` checks GitHub for a newer skill version, shows what's new,
+  and updates in place on your confirmation (`git pull` for a clone, otherwise a branch-zip overwrite of the
+  tracked files only — your `config.json` / `secret.dpapi` / `tools/` are never touched). Say *"update skill"*,
+  *"/update-skill"*, or *"psadt update"*.
+
 > Planned features (GitHub package sync) live in the [Roadmap](#roadmap).
 
 ## Requirements
@@ -135,6 +140,7 @@ psadt-deploy/
 ├─ README.md  ·  CHANGELOG.md  ·  LICENSE
 ├─ scripts/
 │   ├─ Get/Set-PsadtConfig, Get-PsadtModule, Get-IntuneWinAppUtil   setup + self-healing prerequisites
+│   ├─ Update-PsadtSkill.ps1                                        self-update from GitHub (check + apply)
 │   ├─ Get-WinGetModule.ps1                                         opt-in WinGet extension provisioning
 │   ├─ Invoke-PsadtSystemTest.ps1                                   opt-in SYSTEM test loop (Phase 5.5)
 │   ├─ New-PsadtEntraApp.ps1                                        one-time Entra app bootstrap (WAM, cert/secret)

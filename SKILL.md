@@ -1,6 +1,6 @@
 ---
 name: psadt-deploy
-description: Use this skill when the user wants to build, package, test, troubleshoot, or deploy a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 app package. Triggers include "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", or when working inside a folder that contains Invoke-AppDeployToolkit.ps1 / .exe or a PSAppDeployToolkit module.
+description: Use this skill when the user wants to build, package, test, troubleshoot, or deploy a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 app package. Triggers include "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", or when working inside a folder that contains Invoke-AppDeployToolkit.ps1 / .exe or a PSAppDeployToolkit module. Also use it to self-update the skill: "update skill", "/update-skill", "psadt update", "check for skill updates".
 ---
 
 # PSADT v4.x Deployment Skill
@@ -49,12 +49,32 @@ You guide the user through the complete lifecycle of a PSADT v4.x Intune package
   - 0.2 (YYYY-MM-DD, <author.person>): <what was changed>.
   ```
 
+## Self-update (check for a newer skill version)
+
+The skill can update itself from GitHub. **When the user asks** — "update skill", "/update-skill",
+"psadt update", "check for skill updates" — OR **once at the start of Phase 0 setup** (a quiet, non-blocking
+check), run:
+
+```powershell
+pwsh scripts/Update-PsadtSkill.ps1            # read-only check -> LocalVersion / RemoteVersion / UpdateAvailable / WhatsNew
+```
+If `UpdateAvailable` is true, show the user `LocalVersion -> RemoteVersion` and the `WhatsNew` (the remote's
+top CHANGELOG section), then **ask via `AskUserQuestion`** whether to update. Only on confirmation:
+```powershell
+pwsh scripts/Update-PsadtSkill.ps1 -Apply     # git pull --ff-only (clone) OR overwrite tracked files from the branch zip
+```
+It updates only tracked content (SKILL.md, README.md, CHANGELOG.md, LICENSE, references/, scripts/, tests/);
+`config.json`, `secret.dpapi`, `tools/` and `docs/` are never touched. Never auto-apply — always ask first.
+If the check fails (offline), say so and continue; an update check must never block packaging.
+
 ## Workflow (execute in this order)
 
 ### 0. Setup (Phase 0 — run before intake)
 
 Before anything else happens: make sure the skill is configured and the prerequisites are in place.
 
+0. **Self-update check (optional, non-blocking):** run `pwsh scripts/Update-PsadtSkill.ps1`; if a newer
+   version exists, show what's new and ask whether to update (see "Self-update" above). Skip silently on error.
 1. Run `pwsh scripts/Get-PsadtConfig.ps1`. If `Exists` is true and `Missing` is empty, go straight to intake.
 2. If the config is missing/incomplete, run the **setup wizard** — ask only for the missing values, ALWAYS via `AskUserQuestion` (click options), recommended option first:
    - **Paths**: `paths.packageRoot`, `paths.outputRoot`, `paths.intuneWinAppUtil` (offer the current values as defaults).
