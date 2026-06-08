@@ -56,10 +56,12 @@ The skill can update itself from GitHub. **When the user asks** — "update skil
 check), run:
 
 ```powershell
-pwsh scripts/Update-PsadtSkill.ps1            # read-only check -> LocalVersion / RemoteVersion / UpdateAvailable / WhatsNew
+pwsh scripts/Update-PsadtSkill.ps1            # read-only check -> UpdateAvailable / Behind / WhatsNew / versions
 ```
-If `UpdateAvailable` is true, show the user `LocalVersion -> RemoteVersion` and the `WhatsNew` (the remote's
-top CHANGELOG section), then **ask via `AskUserQuestion`** whether to update. Only on confirmation:
+The check is **commit-based** (authoritative, no CDN lag): a git clone compares `HEAD` vs `origin/<branch>`;
+otherwise the GitHub commits API sha is compared against the recorded `tooling.skillCommit`. The CHANGELOG
+version is shown only as context. If `UpdateAvailable` is true, show the user `LocalVersion -> RemoteVersion`
++ `Behind` and the `WhatsNew` (remote's top CHANGELOG section), then **ask via `AskUserQuestion`**. Only on confirmation:
 ```powershell
 pwsh scripts/Update-PsadtSkill.ps1 -Apply     # git pull --ff-only (clone) OR overwrite tracked files from the branch zip
 ```

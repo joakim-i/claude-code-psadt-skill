@@ -2,6 +2,18 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.5.1 — 2026-06-06 — Robust commit-based self-update + README fix
+
+### Changed
+- **Self-update now decides by commit, not by the CHANGELOG version.** `Update-PsadtSkill.ps1` compares the
+  local `HEAD` against `origin/<branch>` (git clone) or the GitHub commits-API sha against the recorded
+  `tooling.skillCommit` (non-clone). This removes the `raw.githubusercontent.com` CDN cache lag and the
+  circular "read the version from a file that can't know about a newer one." The CHANGELOG version is now
+  shown only as context (`RemoteVersion` / `WhatsNew`); `Behind` reports how many commits behind a clone is.
+
+### Fixed
+- README project-structure tree compacted so it renders without horizontal scroll / truncated right-hand comments.
+
 ## 0.5.0 — 2026-06-06 — Skill self-update
 
 ### Added

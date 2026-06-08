@@ -3,15 +3,18 @@
     Checks GitHub for a newer version of this skill and (optionally) updates the local copy in place.
 
 .DESCRIPTION
-    Compares the local skill version (top entry in CHANGELOG.md) against the same file on the GitHub default
-    branch. With -Check (default) it only reports; with -Apply it updates the tracked skill files:
-      - if the skill folder is a git clone (.git present) -> `git pull --ff-only`
-      - otherwise -> downloads the branch zip and overwrites the tracked files
-        (SKILL.md, README.md, CHANGELOG.md, LICENSE, references/, scripts/, tests/)
-    Machine-local state is NEVER touched: config.json, secret.dpapi, tools/, docs/ are left exactly as-is.
+    The "is there an update?" decision is made by COMMIT, not by the CHANGELOG version (which is only shown
+    to the user as context). This avoids the raw-CDN cache lag and the chicken-and-egg of reading a version
+    from a file that can't know about a newer one.
+      - git clone (.git present): `git fetch` then compare HEAD vs origin/<branch> (`UpdateAvailable` = behind > 0).
+      - otherwise: GitHub commits API gives the latest commit sha; compared against `tooling.skillCommit`
+        stored in config.json on the last update (unknown on first run -> offer to sync to latest).
 
-    The agent flow: run -Check, show LocalVersion/RemoteVersion + WhatsNew, ask the user via AskUserQuestion,
-    then run -Apply only on confirmation.
+    With -Apply (and only after the agent has asked the user) it updates the tracked skill files:
+      - git clone   -> `git pull --ff-only`
+      - otherwise   -> downloads the branch zip and overwrites SKILL.md, README.md, CHANGELOG.md, LICENSE,
+                       references/, scripts/, tests/ and records the applied commit in config.json.
+    Machine-local state is NEVER touched: config.json (except the recorded commit), secret.dpapi, tools/, docs/.
 
 .PARAMETER SkillRoot  Skill root (folder with SKILL.md/CHANGELOG.md). Defaults to the parent of this script.
 .PARAMETER Repo       GitHub owner/repo. Default 'pt1987/claude-code-psadt-skill'.
@@ -19,8 +22,8 @@
 .PARAMETER Apply      Perform the update. Without it the script only checks (read-only).
 
 .OUTPUTS
-    PSCustomObject: LocalVersion, RemoteVersion, UpdateAvailable(bool), Method('git'|'archive'),
-                    Applied(bool), WhatsNew(string), Action, Error
+    PSCustomObject: LocalVersion, RemoteVersion, UpdateAvailable(bool), Behind(int|null), Method('git'|'archive'),
+                    LocalCommit, RemoteCommit, Applied(bool), WhatsNew(string), Action, Error
 #>
 [CmdletBinding()]
 param(
@@ -31,48 +34,61 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# Tracked content that an update may overwrite. Everything else (config.json, secret.dpapi, tools/, docs/,
-# .git) is machine-local / gitignored and is deliberately preserved.
+# Tracked content an update may overwrite. Everything else (config.json, secret.dpapi, tools/, docs/, .git)
+# is machine-local / gitignored and is deliberately preserved.
 $TrackedItems = @('SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'references', 'scripts', 'tests')
+$ApiHeaders = @{ 'User-Agent' = 'psadt-deploy-skill'; 'Accept' = 'application/vnd.github+json' }
 
 function Get-TopChangelogVersion([string]$text) {
-    foreach ($line in ($text -split "`n")) {
-        if ($line -match '^\s*##\s+(\d+\.\d+\.\d+)') { return $Matches[1] }
-    }
+    foreach ($line in ($text -split "`n")) { if ($line -match '^\s*##\s+(\d+\.\d+\.\d+)') { return $Matches[1] } }
     return $null
 }
 function Get-TopChangelogSection([string]$text) {
-    $lines = $text -split "`n"; $out = @(); $started = $false
-    foreach ($line in $lines) {
+    $out = @(); $started = $false
+    foreach ($line in ($text -split "`n")) {
         if ($line -match '^\s*##\s+\d+\.\d+\.\d+') { if ($started) { break }; $started = $true }
         if ($started) { $out += $line }
     }
     return ($out -join "`n").Trim()
 }
 
-# --- Local version ---------------------------------------------------------------------------------
 $localChangelog = Join-Path $SkillRoot 'CHANGELOG.md'
-if (-not (Test-Path $localChangelog)) { throw "CHANGELOG.md not found under $SkillRoot - is this the skill folder?" }
-$localVersion = Get-TopChangelogVersion (Get-Content $localChangelog -Raw)
+$localVersion = if (Test-Path $localChangelog) { Get-TopChangelogVersion (Get-Content $localChangelog -Raw) } else { $null }
+$cfg = $null
+$cfgPath = Join-Path $SkillRoot 'config.json'
+if (Test-Path $cfgPath) { try { $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json } catch {} }
 
-# --- Remote version (raw CHANGELOG on the branch) --------------------------------------------------
-$remoteVersion = $null; $whatsNew = $null; $checkError = $null
+$isGit  = Test-Path (Join-Path $SkillRoot '.git')
+$hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
+$method = if ($isGit -and $hasGit) { 'git' } else { 'archive' }
+
+$updateAvailable = $false; $remoteVersion = $null; $whatsNew = $null; $checkError = $null
+$localCommit = $null; $remoteCommit = $null; $behind = $null
 try {
-    $rawUrl = "https://raw.githubusercontent.com/$Repo/$Branch/CHANGELOG.md"
-    $remoteText = Invoke-RestMethod -Uri $rawUrl -Headers @{ 'Cache-Control' = 'no-cache' } -ErrorAction Stop
-    $remoteVersion = Get-TopChangelogVersion $remoteText
-    $whatsNew = Get-TopChangelogSection $remoteText
+    if ($method -eq 'git') {
+        & git -C $SkillRoot fetch --quiet origin $Branch 2>$null
+        $localCommit  = (& git -C $SkillRoot rev-parse HEAD).Trim()
+        $remoteCommit = (& git -C $SkillRoot rev-parse "origin/$Branch").Trim()
+        $behind = [int]((& git -C $SkillRoot rev-list --count "HEAD..origin/$Branch").Trim())
+        $updateAvailable = $behind -gt 0
+        try { $rt = (& git -C $SkillRoot show "origin/${Branch}:CHANGELOG.md") -join "`n"; $remoteVersion = Get-TopChangelogVersion $rt; $whatsNew = Get-TopChangelogSection $rt } catch {}
+    } else {
+        $commit = Invoke-RestMethod "https://api.github.com/repos/$Repo/commits/$Branch" -Headers $ApiHeaders -ErrorAction Stop
+        $remoteCommit = $commit.sha
+        $localCommit  = if ($cfg -and $cfg.tooling) { [string]$cfg.tooling.skillCommit } else { $null }
+        $updateAvailable = if ($localCommit) { $localCommit -ne $remoteCommit } else { $true }   # unknown -> offer sync
+        try {
+            $cont = Invoke-RestMethod "https://api.github.com/repos/$Repo/contents/CHANGELOG.md?ref=$Branch" -Headers $ApiHeaders -ErrorAction Stop
+            $rt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($cont.content))
+            $remoteVersion = Get-TopChangelogVersion $rt; $whatsNew = Get-TopChangelogSection $rt
+        } catch {}
+    }
 } catch { $checkError = "Could not reach GitHub: $($_.Exception.Message)" }
 
-$updateAvailable = $false
-if ($localVersion -and $remoteVersion) {
-    try { $updateAvailable = [version]$remoteVersion -gt [version]$localVersion } catch { $updateAvailable = $remoteVersion -ne $localVersion }
-}
-$method = if (Test-Path (Join-Path $SkillRoot '.git')) { 'git' } else { 'archive' }
-
 $result = [ordered]@{
-    LocalVersion = $localVersion; RemoteVersion = $remoteVersion; UpdateAvailable = $updateAvailable
-    Method = $method; Applied = $false; WhatsNew = $whatsNew; Action = 'Checked'; Error = $checkError
+    LocalVersion = $localVersion; RemoteVersion = $remoteVersion; UpdateAvailable = [bool]$updateAvailable
+    Behind = $behind; Method = $method; LocalCommit = $localCommit; RemoteCommit = $remoteCommit
+    Applied = $false; WhatsNew = $whatsNew; Action = 'Checked'; Error = $checkError
 }
 
 if (-not $Apply -or -not $updateAvailable) {
@@ -84,11 +100,9 @@ if (-not $Apply -or -not $updateAvailable) {
 # --- Apply -----------------------------------------------------------------------------------------
 try {
     if ($method -eq 'git') {
-        $git = (Get-Command git -ErrorAction SilentlyContinue)
-        if (-not $git) { throw "git not found on PATH; cannot pull. Re-run without a .git folder for the archive method." }
-        & git -C $SkillRoot fetch --quiet origin $Branch
         $pull = & git -C $SkillRoot pull --ff-only origin $Branch 2>&1
         $result.Action = "git pull --ff-only: $($pull -join ' ')"
+        $result.LocalCommit = (& git -C $SkillRoot rev-parse HEAD).Trim()
     } else {
         $zipUrl = "https://github.com/$Repo/archive/refs/heads/$Branch.zip"
         $tmpZip = Join-Path ([IO.Path]::GetTempPath()) "psadt-skill-$Branch.zip"
@@ -96,23 +110,21 @@ try {
         Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing
         if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
         Expand-Archive $tmpZip -DestinationPath $tmpDir -Force
-        $extracted = Get-ChildItem $tmpDir -Directory | Select-Object -First 1   # <repo>-<branch>/
+        $extracted = Get-ChildItem $tmpDir -Directory | Select-Object -First 1
         if (-not $extracted) { throw "Downloaded archive had no content folder." }
         foreach ($item in $TrackedItems) {
             $src = Join-Path $extracted.FullName $item
             if (-not (Test-Path $src)) { continue }
-            $dst = Join-Path $SkillRoot $item
-            if ((Get-Item $src) -is [IO.DirectoryInfo]) {
-                Copy-Item $src $SkillRoot -Recurse -Force          # overwrite into existing dir
-            } else {
-                Copy-Item $src $dst -Force
-            }
+            if ((Get-Item $src) -is [IO.DirectoryInfo]) { Copy-Item $src $SkillRoot -Recurse -Force }
+            else { Copy-Item $src (Join-Path $SkillRoot $item) -Force }
         }
         Remove-Item $tmpZip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
-        $result.Action = "archive: overwrote tracked files from $Branch.zip (config/secret/tools preserved)"
+        # Record the applied commit so the next check is an exact sha comparison (no version guessing).
+        & (Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1') -SkillRoot $SkillRoot -Updates @{ 'tooling.skillCommit' = $remoteCommit; 'tooling.skillVersion' = $remoteVersion }
+        $result.Action = "archive: synced tracked files to $($remoteCommit.Substring(0, [Math]::Min(7, $remoteCommit.Length))) (config/secret/tools preserved)"
+        $result.LocalCommit = $remoteCommit
     }
-    # Re-read local version after update
-    $result.LocalVersion = Get-TopChangelogVersion (Get-Content $localChangelog -Raw)
+    if (Test-Path $localChangelog) { $result.LocalVersion = Get-TopChangelogVersion (Get-Content $localChangelog -Raw) }
     $result.Applied = $true
 } catch {
     $result.Action = 'UpdateFailed'; $result.Error = "$_"

@@ -197,6 +197,17 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.5.1 - 06.06.2026
+- Self-update now decides by **commit** (git `HEAD` vs `origin/main`, or the GitHub commits-API sha vs a
+  recorded `tooling.skillCommit`) instead of the CHANGELOG version — no more CDN lag / circular version reads.
+- README project-structure tree compacted so it renders without horizontal scroll.
+
+### 0.5.0 - 06.06.2026
+- **Skill self-update** — `scripts/Update-PsadtSkill.ps1` checks GitHub for a newer version, shows what's new,
+  and updates in place on confirmation (`git pull` for a clone, else branch-zip overwrite of tracked files
+  only; `config.json` / `secret.dpapi` / `tools/` preserved). Triggers: *"update skill"*, *"/update-skill"*,
+  *"psadt update"*.
+
 ### 0.4.0 - 06.06.2026
 - **WinGet packaging support** (strictly opt-in, never the default) + **certificate-based auth** for the Phase 7.5
   upload (no secret at rest) + MSI icon-table logo fallback + device-code first-poll fix. Contributed by
