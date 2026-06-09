@@ -23,13 +23,13 @@ Before any package is built: is the local PSADT module still up to date? Breakin
 **Check commands (online + local):**
 
 ```powershell
-# Lokale Modulversion
+# Local module version
 Get-Module -ListAvailable -Name PSAppDeployToolkit | Select-Object Version,Path
 
-# Neueste Release-Info von GitHub (API, ohne Auth)
+# Latest release info from GitHub (API, no auth)
 $rel = Invoke-RestMethod 'https://api.github.com/repos/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest'
-"Neueste: $($rel.tag_name) vom $($rel.published_at)"
-$rel.body -split "`n" | Select-Object -First 40   # Changelog-Auszug
+"Latest: $($rel.tag_name) from $($rel.published_at)"
+$rel.body -split "`n" | Select-Object -First 40   # Changelog excerpt
 ```
 
 **Check the documentation status:**
@@ -112,7 +112,7 @@ Research per app - without these answers there is no successful silent install:
 "<AppName>" "<Version>" silent install command line
 "<AppName>" msi transform mst enterprise deployment
 "<AppName>" uninstall silent /quiet /qn
-"<AppName>" site:<hersteller-docs-domain> deployment guide
+"<AppName>" site:<vendor-docs-domain> deployment guide
 "<AppName>" known issues intune win32
 ```
 
@@ -161,9 +161,9 @@ Do not create folders manually. The official cmdlet builds the correct structure
 ### 1.1 Load the module, generate the scaffold
 
 ```powershell
-# Einmalig - oder wenn Version veraltet
+# One-time - or when the installed version is outdated
 Install-Module PSAppDeployToolkit -Scope CurrentUser -Force
-# Alternativ: vom GitHub-Release .zip runterladen und manuell nach $HOME\Documents\PowerShell\Modules\PSAppDeployToolkit\<ver>\ entpacken
+# Alternative: download the .zip from the GitHub release and extract it manually to $HOME\Documents\PowerShell\Modules\PSAppDeployToolkit\<ver>\
 
 Import-Module PSAppDeployToolkit
 ```
@@ -172,25 +172,25 @@ The values come from the intake in Phase 0.2 - replace `<...>` with the ACTUAL v
 
 **Basic scaffold (only destination + name):**
 ```powershell
-New-ADTTemplate -Destination '<Root-Ordner>' -Name '<AppName>'
+New-ADTTemplate -Destination '<RootFolder>' -Name '<AppName>'
 # e.g. New-ADTTemplate -Destination '<paths.packageRoot from config>' -Name 'FooBar 10'
 ```
 
-Creates `<Root-Ordner>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
+Creates `<RootFolder>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
 
 **Extended scaffold (pre-populated with app metadata, values from Phase 0.2):**
 ```powershell
-New-ADTTemplate -Destination '<Root-Ordner>' `
+New-ADTTemplate -Destination '<RootFolder>' `
     -Name '<AppName>' `
-    -AppVendor '<Hersteller>' `
-    -AppName '<ProduktKurzname>' `
+    -AppVendor '<Vendor>' `
+    -AppName '<ProductShortName>' `
     -AppVersion '<Major.Minor.Build.Rev>' `
     -AppArch '<x64|x86|ARM64>' `
     -AppLang '<EN|DE|Multi>' `
     -AppRevision '<01>' `
     -AppSuccessExitCodes @(<0>, <1707>) `
     -AppRebootExitCodes @(<1641>, <3010>) `
-    -AppScriptAuthor '<Vorname Nachname>'
+    -AppScriptAuthor '<FirstName LastName>'
 ```
 
 The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppDeployToolkit.ps1`. Less manual editing = fewer typos.
@@ -202,14 +202,14 @@ The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppD
 ```
 <Destination>\<Name>\
   Invoke-AppDeployToolkit.exe          # 4.x Launcher
-  Invoke-AppDeployToolkit.ps1          # Template mit Pre/Install/Post-Hooks
-  PSAppDeployToolkit\                  # Komplettes Modul (psd1 + psm1 + lib\)
-  PSAppDeployToolkit.Extensions\       # Leere Extension-Shell (eigenes Code-Home)
-  Files\                               # Hier kommen Installer-Binaries rein
+  Invoke-AppDeployToolkit.ps1          # Template with Pre/Install/Post hooks
+  PSAppDeployToolkit\                  # Complete module (psd1 + psm1 + lib\)
+  PSAppDeployToolkit.Extensions\       # Empty extension shell (your own code home)
+  Files\                               # Installer binaries go here
   SupportFiles\                        # MST, INI, XML, Scripts
   Assets\                              # Icon (AppIcon.png), Logos
   Config\                              # PSADT Config-Overrides (optional)
-  Strings\                             # Lokalisierungs-Overrides (optional)
+  Strings\                             # Localization overrides (optional)
 ```
 
 ### 1.3 First verification of the scaffold
@@ -218,7 +218,7 @@ The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppD
 $pkg = '<scaffold path>'   # e.g. '<paths.packageRoot from config>\<AppName>'
 # the module version in the scaffold must match the installed version
 (Import-PowerShellDataFile "$pkg\PSAppDeployToolkit\PSAppDeployToolkit.psd1").ModuleVersion
-# Template-Version im Script
+# Template version in the script
 Select-String "$pkg\Invoke-AppDeployToolkit.ps1" -Pattern 'DeployAppScriptVersion' -List | Select-Object Line
 ```
 
@@ -239,24 +239,24 @@ In `Invoke-AppDeployToolkit.ps1` check the hashtable (see 0.2 Intake for the val
 
 ```powershell
 $adtSession = @{
-    AppVendor                   = '<Hersteller>'
-    AppName                     = '<Produkt-Kurzname>'
+    AppVendor                   = '<Vendor>'
+    AppName                     = '<Product-ShortName>'
     AppVersion                  = '<Major.Minor.Build.Rev>'
     AppArch                     = '<x64|x86|ARM64>'
     AppLang                     = '<EN|DE|Multi>'
     AppRevision                 = '<01>'
-    AppSuccessExitCodes         = @(0, 1707)                           # Installer-spezifisch ergaenzen
+    AppSuccessExitCodes         = @(0, 1707)                           # add installer-specific codes
     AppRebootExitCodes          = @(1641, 3010)
-    AppProcessesToClose         = @('<prozess1>', '<prozess2>')        # Namen ohne .exe; aus Phase 0.2
+    AppProcessesToClose         = @('<process1>', '<process2>')        # names without .exe; from Phase 0.2
     AppScriptVersion            = '<1.0.0>'
     AppScriptDate               = '<YYYY-MM-DD>'
-    AppScriptAuthor             = '<Vorname Nachname>'
+    AppScriptAuthor             = '<FirstName LastName>'
     RequireAdmin                = $true
     InstallName                 = ''
     InstallTitle                = ''
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
-    DeployAppScriptParameters   = $PSBoundParameters                    # oder sanitized Dictionary wenn Secrets
-    DeployAppScriptVersion      = '<passend zur ModuleVersion im Scaffold>'
+    DeployAppScriptParameters   = $PSBoundParameters                    # or a sanitized dictionary if there are secrets
+    DeployAppScriptVersion      = '<matching the ModuleVersion from the scaffold>'
 }
 ```
 
@@ -275,7 +275,7 @@ function Install-ADTDeployment {
     Start-ADTMsiProcess -FilePath "$($adtSession.DirFiles)\<installer>.msi" -Transforms "$($adtSession.DirSupportFiles)\<transform>.mst" -ArgumentList '/qn REBOOT=ReallySuppress'
 
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
-    # Shortcuts aufraeumen, Registry-Keys setzen, Update-Service deaktivieren, etc.
+    # clean up shortcuts, set registry keys, disable the update service, etc.
 }
 ```
 
@@ -310,7 +310,7 @@ Run everything in this phase. Each failure = DO NOT continue.
 PowerShell 5.1 reads a .ps1 without a BOM as Windows-1252. UTF-8 multibytes (em-dash `—`, arrow `→`, umlauts, typographic quotes, ellipsis `…`) fall apart. In double-quoted strings a misinterpreted em-dash **closes** the string prematurely (UTF-8 `E2 80 94` -> CP1252 `â€"`, last byte = `"`). Parse error. The script NEVER runs. Intune shows `0x80070001`, no local logs.
 
 ```powershell
-$s = '<pfad-zur-ps1>'
+$s = '<path-to-ps1>'
 $bytes = [System.IO.File]::ReadAllBytes($s)
 $hasBom = $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
 $text = [System.IO.File]::ReadAllText($s, [System.Text.Encoding]::UTF8)
@@ -648,7 +648,7 @@ Cleanup sequence (caution, check first):
 Get-Process | Where-Object { $_.ProcessName -match 'Invoke-AppDeployToolkit|setup|msiexec|dbca|sqlplus' } | Select Id,ProcessName,StartTime
 Get-ScheduledTask -TaskName 'PSADT_*' -ErrorAction SilentlyContinue | Select TaskName,State
 
-# Nur wenn sicher nichts mehr laeuft:
+# only when nothing is running anymore for sure:
 Stop-Service IntuneManagementExtension -Force
 Remove-Item 'HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps\<UserSID>\<AppId>' -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service IntuneManagementExtension
@@ -698,7 +698,7 @@ AppWorkload.log sequence:
 Before the launcher test on a DEV box, when the install action is too big/expensive:
 
 ```powershell
-$orig = '<pfad-zur-ps1>'
+$orig = '<path-to-ps1>'
 $test = "$env:TEMP\test-Invoke-AppDeployToolkit.ps1"
 $content = [System.IO.File]::ReadAllText($orig)
 $stub = '"STUB_REACHED_INSTALL" | Out-File $env:TEMP\stub-reached.log -Encoding utf8; exit 77'
@@ -868,14 +868,14 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 |---|---|---|
 | **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
 | **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
-| **Publisher** | `<Hersteller>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
+| **Publisher** | `<Vendor>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
 | **App version** | `<Major.Minor.Build.Rev>` | exact file version |
 | **Category** | e.g. Business, Development, Productivity, Communication | for CP navigation |
 | **Show this as a featured app in the Company Portal** | Yes/No | Yes only for recommended self-service apps |
-| **Information URL** | `<hersteller-produktseite>` | official product homepage |
-| **Privacy URL** | `<hersteller-privacy-url>` | often the vendor's `/legal/privacy/` |
-| **Developer** | `<Hersteller-Kurzname>` | usually == Publisher |
-| **Owner** | `<internes-Team>` | internal service owner (e.g. "Workplace-Services") |
+| **Information URL** | `<vendor-product-page>` | official product homepage |
+| **Privacy URL** | `<vendor-privacy-url>` | often the vendor's `/legal/privacy/` |
+| **Developer** | `<Vendor-ShortName>` | usually == Publisher |
+| **Owner** | `<internal-team>` | internal service owner (e.g. "Workplace-Services") |
 | **Notes** | `PSADT 4.1.8 v<N> - pkg rev <NN> - YYYY-MM-DD` | package metadata for later troubleshooting |
 | **Logo** | `<pkg>\Assets\<App>-Logo.png` (REAL app logo, NOT the PSADT default `AppIcon.png`) | >=256x256 PNG |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
