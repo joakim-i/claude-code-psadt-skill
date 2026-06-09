@@ -2,6 +2,22 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.5.3 — 2026-06-09 — Guide: code inside code-fences is now English/ASCII
+
+### Changed
+- **`references/PSADTv4-Deployment-Guide.md`** — anglicized every German comment, string literal and
+  placeholder that lived **inside PowerShell/text code fences** (and the inline-code placeholders in the
+  Appendix F.1 table). Examples: `# Lokale Modulversion` → `# Local module version`,
+  `"Neueste: … vom …"` → `"Latest: … from …"`, `<Hersteller>` → `<Vendor>`,
+  `<Vorname Nachname>` → `<FirstName LastName>`, `<pfad-zur-ps1>` → `<path-to-ps1>`,
+  `<prozess1>` → `<process1>`. Reason: snippets get copied verbatim into deployment scripts, where the
+  binding rule is English + 7-bit ASCII — German comments/umlauts in a copied snippet are exactly the
+  encoding/consistency failure class the pre-flight warns about.
+- Deliberately **left unchanged**: the German explanatory **prose** of the guide and the **F.2 Company
+  Portal description template** (legitimate end-user dossier text, `language.dossier` = German with real
+  umlauts). No script/tooling code changed; `scripts/` and `Report-Template.html` were already compliant
+  (German only as dossier output, ASCII-clean via HTML entities).
+
 ## 0.5.2 — 2026-06-08 — Always-on HTML package report (template + generator)
 
 ### Added
