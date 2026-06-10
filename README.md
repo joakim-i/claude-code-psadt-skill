@@ -203,6 +203,31 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.7.5 - 10.06.2026
+- **Honest exit codes + detection (correctness fix).** Removed the dangerous "always `exit 0`" guidance from
+  guide Appendix K — a blanket `exit 0` (or a detection tag written in a `finally`) reports GREEN on failure.
+  New **K.7**: the exit code reflects whether the fix could RUN (couldn't-run -> non-zero; the 64-bit relaunch
+  propagates the child's exit code), detection reflects the real END-STATE (tag only on success), with a
+  per-package decision table; "never block enrollment" is now an explicit ESP-assignment + return-code-mapping
+  choice, not a masked exit code. SKILL.md anti-pattern added.
+
+### 0.7.0 - 10.06.2026
+- **Value-adding extensions.** New `scripts/Invoke-PsadtPreflight.ps1` turns the Phase-5 Reviewer gate into one
+  deterministic `GREEN/RED` tool (encoding/parse/v3-scan/top-level/structure/GUID-to-`-FilePath`), with a Pester
+  suite. New guide **Appendix K** (script-only remediation / fix packages, ESP-safe — the debloat/Cisco pattern)
+  and **Appendix L** (installer technologies + silent switches, a lookup consulted before web research). Expanded
+  error-code catalogue (MSI 1603/1605/1619/1638/1639…, PSADT 60001/60008 + ranges) in guide Appendix A and the
+  SKILL.md troubleshooting table. SKILL.md rewired to point at the pre-flight script and the new appendices.
+
+### 0.6.2 - 10.06.2026
+- **Audit & harden.** Agent-based audit + source-level verification (discarded ~8 false positives). Fixes: the
+  guide's broken `New-ADTTemplate` "Extended scaffold" (passing app metadata params that v4.1.x rejects);
+  the Graph uploader leaving its extracted work dir (with the AES keys in `Detection.xml`) in `%TEMP%` (now
+  `try/finally` cleanup); the report `Notes` default `&middot;` double-escape; the fallback initials-SVG logo
+  now XML-escapes + base64-encodes (no markup injection, with a regression test). Robustness: `Invoke-Graph`
+  429/5xx retry with `Retry-After`; malformed-`config.json` safety in four scripts; WinGet 2-byte header read;
+  symmetric temp cleanup in self-update. Graph request shapes left untouched.
+
 ### 0.6.1 - 10.06.2026
 - **Report header flicker fixed** (`references/Report-Template.html`): at widths where the content height met
   the viewport edge, the vertical scrollbar toggled on/off and the header's `vw`-based `clamp()` padding and

@@ -18,11 +18,23 @@ Describe 'New-PsadtReport' {
         $html | Should -Not -Match '\{\{[A-Z0-9_]+\}\}'   # every token filled
     }
 
-    It 'embeds a fallback initials logo when no LogoPath is given' {
+    It 'embeds a fallback initials logo (base64 SVG) when no LogoPath is given' {
         & $script:gen -Metadata @{ AppName = 'Foo Bar' } -OutputPath $script:out
         $html = Get-Content $script:out -Raw
-        $html | Should -Match 'data:image/svg\+xml,'
-        $html | Should -Match '>FB<'   # initials of "Foo Bar"
+        $m = [regex]::Match($html, 'data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)')
+        $m.Success | Should -BeTrue
+        $svg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($m.Groups[1].Value))
+        $svg | Should -Match '>FB<'   # initials of "Foo Bar"
+    }
+
+    It 'XML-escapes special characters in the fallback SVG initials (no markup injection)' {
+        & $script:gen -Metadata @{ AppName = '<x Y' } -OutputPath $script:out   # initials -> '<' + 'Y'
+        $html = Get-Content $script:out -Raw
+        $m = [regex]::Match($html, 'data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)')
+        $m.Success | Should -BeTrue
+        $svg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($m.Groups[1].Value))
+        $svg | Should -Match '&lt;Y'              # the '<' initial is XML-escaped...
+        $svg | Should -Not -Match '>\<Y'          # ...never a raw '<' opening inside the text node
     }
 
     It 'embeds a real logo file as a base64 data URI' {

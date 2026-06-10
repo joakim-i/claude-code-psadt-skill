@@ -2,6 +2,74 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.7.5 — 2026-06-10 — Honest exit codes + detection for fix/remediation packages
+
+### Fixed
+- **Removed the dangerous "always exit 0" guidance** from guide **Appendix K**. A blanket `exit 0` (and a
+  detection tag written in a `finally`) reports GREEN on failure — a real defect that hides broken deployments.
+  The recipe now teaches the honest model (new **K.7**):
+  - **Exit code = could the fix RUN?** Ran to completion -> `0`; couldn't run / crashed -> **non-zero**. The
+    64-bit relaunch now **propagates the child's exit code** (`exit $LASTEXITCODE`), never a hard-coded `0` (K.2).
+  - **Detection = the real END-STATE**, not an unconditional tag; if a tag is used, write it ONLY on a successful
+    run (never in a `finally`). A failed fix -> detection negative -> Intune retry + **visible** (K.5).
+  - Per-package decision table (real installer / important fix / non-critical ESP cleanup), and "never block
+    enrollment" reframed as an explicit ESP-assignment + return-code-mapping choice (K.6), not a masked exit code.
+- **SKILL.md** anti-pattern added: a blanket `exit 0` or a `finally`-written tag both report green on failure.
+
+## 0.7.0 — 2026-06-10 — Value-adding extensions (pre-flight tool, recipes, knowledge)
+
+### Added
+- **`scripts/Invoke-PsadtPreflight.ps1`** — the Phase-5 Reviewer gate as one deterministic, testable tool.
+  `-PackagePath <pkg>` returns `{ Overall='GREEN'|'RED'; Checks=@(...) }` covering encoding (ASCII/BOM), AST
+  parse, v3-cmdlet scan (launcher + Extensions only; a private `Write-Log` in a bundled `Files\*.ps1` is no
+  longer a false positive), top-level-statement scan, the structural acid-test (all three hooks defined +
+  Extensions helpers actually called), and the GUID→`-FilePath` anti-pattern. New `tests/Invoke-PsadtPreflight.Tests.ps1`
+  (clean package = GREEN; em-dash / v3 cmdlet / GUID-to-`-FilePath` / missing-hook fixtures = RED).
+- **Guide Appendix K — script-only remediation / fix packages (ESP-safe).** Codifies the recurring
+  debloat/Cisco-style pattern: run a bundled PS script via native 64-bit PowerShell (Extensions helper shared by
+  Install + Repair), self-healing file/tag detection, no-op uninstall that never removes the fixed artifact,
+  `DeployMode Silent`, always exit 0, `CloseProcesses` for in-use files, ESP blocking-app wiring.
+- **Guide Appendix L — installer technologies + silent switches.** A lookup (consulted before web research):
+  identify MSI / MSI-wrapped EXE / InstallShield / Inno Setup / NSIS / WiX Burn / Squirrel / MSIX / install4j /
+  Wise, with silent install/uninstall/no-reboot/log switches and the natural detection rule.
+- **Expanded error-code catalogue** (guide Appendix A.1 + new A.4; highest-frequency rows in the SKILL.md
+  troubleshooting table): MSI 1603/1605/1618/1619/1620/1622/1625/1635/1638/1639/110x, the matching `0x8007…`
+  HRESULTs, and the PSADT 60001/60008 + 60002–60007/69000+/70000+ ranges — each with a concrete reaction.
+
+### Changed
+- **SKILL.md** Phase 5 now points at the pre-flight script (GREEN required); Phase 2 research consults Appendix L
+  first (and Appendix K for script-only fixes); reference lookup + anti-patterns updated. SKILL.md stays a lean
+  control plane (no inlined code).
+
+## 0.6.2 — 2026-06-10 — Audit & harden (scripts, report, guide)
+
+A full agent-based audit (3 parallel reviewers) followed by source-level verification of every finding
+(which discarded ~8 false positives). Only verified weaknesses were fixed; the proven Graph request shapes
+were left untouched.
+
+### Fixed
+- **Guide doc-vs-code that broke packaging** (`references/PSADTv4-Deployment-Guide.md`): the "Extended scaffold"
+  told the agent to pass `-AppVendor/-AppName/-AppVersion/...` to `New-ADTTemplate`, which v4.1.x rejects
+  ("A parameter cannot be found …"). Removed it; metadata goes into `$adtSession` after scaffolding (matches SKILL.md).
+- **Upload leaves AES keys in `%TEMP%`** (`scripts/Invoke-IntuneWin32Upload.ps1`): the extracted work dir
+  (whose `Detection.xml` holds `encryptionKey/macKey/IV/mac`) is now removed via `try/finally` on success,
+  dry-run, or throw.
+- **Report `Notes` double-escape** (`scripts/New-PsadtReport.ps1`): the default `Notes` contained `&middot;`,
+  which `Esc` turned into a literal `&amp;middot;`. Switched the default to ASCII separators.
+- **Fallback logo hardening** (`scripts/New-PsadtReport.ps1`): the initials-tile SVG now XML-escapes the
+  AppName-derived initials and is emitted as a base64 data URI (a special character can no longer break or
+  inject markup). New regression test in `tests/New-PsadtReport.Tests.ps1`.
+
+### Changed (robustness)
+- **Graph throttling retry** (additive): `Invoke-Graph` now retries 429 / 5xx honouring `Retry-After`
+  (max 4 attempts); request bodies unchanged.
+- **Malformed-config safety**: `Get-PsadtConfig`, `Get-IntuneWinAppUtil`, `Get-WinGetModule`, `Set-PsadtConfig`
+  now handle a corrupt `config.json` with a clear message instead of a raw `ConvertFrom-Json` throw.
+- **Download hardening**: WinGet zip header check reads only 2 bytes (not the whole archive) and guards a
+  <2-byte download; `Get-IntuneWinAppUtil` releases its file handle via `finally`; `Update-PsadtSkill` cleans
+  its temp files on the failure path too.
+- Doc comment corrected: block-blob upload uses 4 MB blocks (was mislabelled "6 MB").
+
 ## 0.6.1 — 2026-06-10 — Report header: fix scrollbar-feedback flicker
 
 ### Fixed

@@ -16,7 +16,7 @@
       3. create or reuse the win32LobApp
       4. create a contentVersion
       5. register the file (size + sizeEncrypted), poll for the Azure SAS URI
-      6. block-blob upload the encrypted blob to the SAS URI (6 MB blocks, retry + SAS renew)
+      6. block-blob upload the encrypted blob to the SAS URI (4 MB blocks, retry + SAS renew)
       7. commit with the fileEncryptionInfo, poll for commitFileSuccess
       8. PATCH committedContentVersion (+ largeIcon) and print the portal deep-link
 
@@ -117,7 +117,21 @@ function Invoke-Graph {
     if ($PSBoundParameters.ContainsKey('Body') -and $null -ne $Body) {
         $p.Body = ($Body | ConvertTo-Json -Depth 20); $p.ContentType = 'application/json'
     }
-    return Invoke-RestMethod @p
+    # Additive transient-failure retry: 429 (throttling) + 5xx, honouring Retry-After (max 4 attempts).
+    # The request itself (method/uri/body) is unchanged - this only retries a failed send.
+    for ($attempt = 1; ; $attempt++) {
+        try { return Invoke-RestMethod @p }
+        catch {
+            $status = $null
+            try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+            if ($attempt -ge 4 -or -not ($status -eq 429 -or ($status -ge 500 -and $status -le 599))) { throw }
+            $retryAfter = 0
+            try { $retryAfter = [int]$_.Exception.Response.Headers['Retry-After'] } catch {}
+            $wait = if ($retryAfter -gt 0) { $retryAfter } else { [int][Math]::Min(30, [Math]::Pow(2, $attempt)) }
+            Write-Info "Graph $status - transient, retrying in ${wait}s (attempt $attempt)..."
+            Start-Sleep -Seconds $wait
+        }
+    }
 }
 
 # =====================================================================================================
@@ -128,6 +142,9 @@ Write-Step "Parse .intunewin"
 if (-not (Test-Path $IntuneWinPath)) { throw "Not found: $IntuneWinPath" }
 $work = Join-Path ([IO.Path]::GetTempPath()) ("iwup-" + [IO.Path]::GetFileNameWithoutExtension($IntuneWinPath))
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+# Everything from here runs inside try/finally so the extracted work dir - whose Detection.xml holds the
+# AES encryptionKey/macKey/IV/mac - is ALWAYS removed from %TEMP%, on success, dry-run return, or throw.
+try {
 Expand-Archive -Path $IntuneWinPath -DestinationPath $work -Force
 $detXml = Join-Path $work 'IntuneWinPackage\Metadata\Detection.xml'
 $encBlob = Join-Path $work 'IntuneWinPackage\Contents\IntunePackage.intunewin'
@@ -458,3 +475,8 @@ if ($existing -and -not $UpdateAppId) {
 }
 
 [pscustomobject]@{ Executed=$true; AppId=$appId; ContentVersion=$cvId; PortalUrl=$portal; Categories=$assignedCats; Supersedes=$supersededWired; CoexistsWith=@($existing | ForEach-Object { $_.id }); Existing=@($existing) }
+}
+finally {
+    # Remove the extracted work dir - its Detection.xml holds the AES keys; never leave it in %TEMP%.
+    if ($work -and (Test-Path $work)) { Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue }
+}

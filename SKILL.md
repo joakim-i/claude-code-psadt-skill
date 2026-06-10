@@ -123,7 +123,9 @@ end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from res
 
 **Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher roles
 concurrently, collect into the Phase-0.3 findings table, and show it before scaffold. Record per deployment
-type: switch, expected exit codes, log path, known leftovers. On a newer PSADT release, ALWAYS diff the
+type: switch, expected exit codes, log path, known leftovers. **Consult guide Appendix L (installer technologies
++ silent switches) BEFORE web-searching switches**; for a script-only fix/remediation/debloat package (no vendor
+installer) follow guide Appendix K instead of the normal installer flow. On a newer PSADT release, ALWAYS diff the
 release notes for renamed/deprecated/changed commands before building - never adopt a version by number alone;
 verify the actually-used cmdlets with `Get-Command -Module PSAppDeployToolkit` (and `Get-Help <cmdlet>
 -Parameter *` for changed params). If divergent, recommend `Update-Module PSAppDeployToolkit -Force` before
@@ -146,12 +148,15 @@ msiexec): guide Phase 2. WinGet hook patterns: guide Appendix I.3. The GUID-to-`
 `-FilePath` throws `InvalidFilePathParameterValue` → 60001) applies to Uninstall AND Repair - Repair is the
 usual miss. Custom helpers ALWAYS in `PSAppDeployToolkit.Extensions.psm1`, never the main script.
 
-**Phase 5 - Pre-flight (Reviewer gate).** Three green per deployment type: (1) encoding (`HasBOM=True` OR
-`Count=0`), (2) AST parse OK, (3) launcher acid test per type. Plus v3-cmdlet scan + top-level-statement scan.
-Any type red = STOP (even if Install is green - else Company-Portal uninstall returns 0x80070001). Encoding
-fix (em-dash/smart-quote replace + UTF-8 BOM), scans, and the acid-test stub: guide Phase 3 (3.1-3.6) +
-Appendix C. WinGet adds a module-present check and MUST use the stub (the live acid test would install):
-guide Appendix I.4.
+**Phase 5 - Pre-flight (Reviewer gate).** Run `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` - it returns
+`{ Overall='GREEN'|'RED'; Checks=@(...) }` and runs all gate checks deterministically: encoding (`HasBOM=True` OR
+non-ASCII `Count=0`), AST parse, v3-cmdlet scan (launcher + Extensions only - bundled `Files\*.ps1` are
+parse/encoding-only, so a private `Write-Log` there is NOT flagged), top-level-statement scan, the structural
+acid-test (all three `*-ADTDeployment` hooks defined + Extensions helpers actually called), and the
+GUID-to-`-FilePath` anti-pattern. **`Overall` must be GREEN to proceed** (any RED = STOP, even if Install looks
+fine - else Company-Portal uninstall returns 0x80070001). Encoding fix (em-dash/smart-quote replace + UTF-8 BOM)
+and per-check explanations: guide Phase 3 (3.1-3.6) + Appendix C. WinGet adds a module-present check and MUST use
+the acid-test stub (a live acid test would install): guide Appendix I.4.
 
 **Phase 5.5 - SYSTEM test loop (opt-in; BINDING gate for upload).** `Invoke-PsadtSystemTest.ps1` runs one
 action as SYSTEM (via `Invoke-CommandAs`, self-healed from PSGallery; needs an elevated session) and returns
@@ -207,6 +212,9 @@ IntuneManagementExtension.log.
 | `60001 InvalidFilePathParameterValue` on Uninstall/Repair | GUID passed to `-FilePath` | use `-ProductCode '{GUID}'`; guide G |
 | App stuck on "Installing" in Company Portal | IME state cache / process hang | guide A.2 cleanup sequence |
 | `0x80070002` | launcher cannot find the .ps1 | `-s` during packaging was wrong |
+| `0x80070643` (1603) MSI fatal error | perms / disk / **pending reboot** / bad property / failed custom action | clear pending reboot, read the `/l*v` MSI log; guide A.4 |
+| `0x80070666` (1638) "another version installed" | older ProductCode still present | uninstall old first, or ship a real upgrade; guide A.4 |
+| exit 1605 on uninstall | product already gone | treat as success (map 1605); guide A.4 |
 | detection failed after a successful install | detection-script bug (contract / 32-64-bit reg) | run `.\Detect-*.ps1; $LASTEXITCODE` on target |
 | SYSTEM test: every step `ExitCode=0 Success=False` | ran under pwsh 7 (PSScheduledJob is WinPS-5.1-only) | re-run under powershell.exe 5.1; guide G |
 | upload `must have at least one detection rule` (rule WAS sent) | needs the unified `rules`, `@odata.type` first | `[ordered]@{}`; guide H |
@@ -235,10 +243,16 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - Desktop icons; Extensions logic in the main script; reflexive 120-min install time (60 is usually right);
   fallback deletes on the first negative async response (build a retry loop).
 - Uploading without the Phase 5.5 SYSTEM test passing Install + Uninstall.
+- Hand-rolling the pre-flight gate instead of running `scripts/Invoke-PsadtPreflight.ps1` (the GREEN/RED verdict
+  is the gate); for a script-only fix, treating it like a vendor installer instead of following Appendix K.
+- A blanket `exit 0` in a fix/remediation script, or a detection tag written in a `finally` - both report GREEN
+  on failure. The exit code must reflect "could it run" (couldn't-run -> non-zero), detection the real end-state;
+  never block enrollment by lying about the exit code (guide K.7).
 
 ## Reference lookup
 
 `references/PSADTv4-Deployment-Guide.md` - Phase 0.2 intake catalogue · 0.1/0.3 research · Phase 1 scaffold ·
 2 customize · 3 pre-flight · 4 package · 5 Intune config fields · 6 test · 7 rollout · App. A errors ·
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
-learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification**.
+learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
+**K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches**.

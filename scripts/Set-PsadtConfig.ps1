@@ -20,7 +20,8 @@ function ConvertTo-HashtableDeep($obj) {
     return $obj
 }
 $config = if (Test-Path $configPath) {
-    ConvertTo-HashtableDeep (Get-Content $configPath -Raw | ConvertFrom-Json)
+    try { ConvertTo-HashtableDeep (Get-Content $configPath -Raw | ConvertFrom-Json) }
+    catch { throw "config.json is malformed and cannot be safely updated: $($_.Exception.Message). Fix or delete it, then re-run." }
 } else { @{ version = 1 } }
 if (-not $config.ContainsKey('version')) { $config['version'] = 1 }
 

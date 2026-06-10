@@ -11,8 +11,8 @@ $configPath = Join-Path $SkillRoot 'config.json'
 
 $installedVersion = $null
 if (Test-Path $configPath) {
-    $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
-    $installedVersion = $cfg.tooling.intuneWinAppUtilVersion
+    try { $installedVersion = (Get-Content $configPath -Raw | ConvertFrom-Json).tooling.intuneWinAppUtilVersion }
+    catch { Write-Warning "config.json unreadable ($($_.Exception.Message)); proceeding without a recorded version." }
 }
 
 $latestTag = $null
@@ -26,8 +26,10 @@ $tag = if ($latestTag) { $latestTag } else { 'v1.8.7' }
 try {
     New-Item (Split-Path $exe -Parent) -ItemType Directory -Force | Out-Null
     Invoke-WebRequest "https://github.com/$repo/raw/$tag/IntuneWinAppUtil.exe" -OutFile $exe
-    $fs = [System.IO.File]::OpenRead($exe); $hdr = New-Object byte[] 2; $null = $fs.Read($hdr, 0, 2); $fs.Close()
-    if (((Get-Item $exe).Length -lt 2) -or $hdr[0] -ne 0x4D -or $hdr[1] -ne 0x5A) {
+    $hdr = New-Object byte[] 2
+    $fs = [System.IO.File]::OpenRead($exe)
+    try { $nRead = $fs.Read($hdr, 0, 2) } finally { $fs.Dispose() }
+    if ($nRead -lt 2 -or $hdr[0] -ne 0x4D -or $hdr[1] -ne 0x5A) {
         Remove-Item $exe -Force -ErrorAction SilentlyContinue
         throw "Downloaded file is not a valid executable (missing MZ header)."
     }

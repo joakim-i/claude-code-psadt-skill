@@ -176,24 +176,16 @@ New-ADTTemplate -Destination '<RootFolder>' -Name '<AppName>'
 # e.g. New-ADTTemplate -Destination '<paths.packageRoot from config>' -Name 'FooBar 10'
 ```
 
-Creates `<RootFolder>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
+Creates `<RootFolder>\<AppName>\` with the complete v4 structure. `New-ADTTemplate` in v4.1.x takes ONLY
+`-Destination` / `-Name` / `-Version` / `-Force` / `-Show` / `-PassThru` — it does NOT accept app-metadata
+parameters. The default is `-Version 4` (current v4 style); `-Version 3` gives the v3 compatibility template
+(you no longer need that in 2026).
 
-**Extended scaffold (pre-populated with app metadata, values from Phase 0.2):**
-```powershell
-New-ADTTemplate -Destination '<RootFolder>' `
-    -Name '<AppName>' `
-    -AppVendor '<Vendor>' `
-    -AppName '<ProductShortName>' `
-    -AppVersion '<Major.Minor.Build.Rev>' `
-    -AppArch '<x64|x86|ARM64>' `
-    -AppLang '<EN|DE|Multi>' `
-    -AppRevision '<01>' `
-    -AppSuccessExitCodes @(<0>, <1707>) `
-    -AppRebootExitCodes @(<1641>, <3010>) `
-    -AppScriptAuthor '<FirstName LastName>'
-```
-
-The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppDeployToolkit.ps1`. Less manual editing = fewer typos.
+**App metadata is NOT a `New-ADTTemplate` parameter** — do not pass `-AppVendor/-AppName/-AppVersion/-AppArch/...`
+(v4.1.x throws "A parameter cannot be found that matches parameter name 'AppVendor'"). Instead, after scaffolding,
+fill the metadata directly in the generated `Invoke-AppDeployToolkit.ps1`'s `$adtSession = @{ ... }` hashtable
+(AppVendor / AppName / AppVersion / AppArch / AppLang / AppRevision / AppSuccessExitCodes / AppRebootExitCodes /
+`AppScriptVersion = '0.1'` / AppScriptAuthor from config) plus the `.NOTES` changelog. See Phase 1 field details below.
 
 > The `Adobe Acrobat Pro` and `Oracle XE` references further down in this document are illustration only - for every new package the app TO BE PACKAGED is inserted here, not Adobe or Oracle.
 
@@ -232,6 +224,10 @@ Both must match (typically `4.1.8`). If they diverge -> reinstall the module + s
 
 Everything that is `setup.exe`, `*.msi`, `*.mst`, response files, runtime assets lands under `<pkg>\Files\`.
 In the script then use `$adtSession.DirFiles` as the root.
+
+> Identify the installer technology and its silent/uninstall/no-reboot/log switches from **Appendix L**
+> (consult it BEFORE web-searching). For a *script-only* fix/remediation/debloat package (no vendor installer),
+> follow **Appendix K** instead.
 
 ### 2.2 Finalize the `$adtSession` metadata
 
@@ -304,6 +300,10 @@ The main script loads the extensions automatically (the block `Get-ChildItem ...
 ## Phase 3: Pre-flight checks
 
 Run everything in this phase. Each failure = DO NOT continue.
+
+> **Fast path:** `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` runs all of 3.1-3.6 in one shot and
+> returns `{ Overall = 'GREEN'|'RED'; Checks = ... }` (GREEN required to proceed). The sub-sections below
+> explain each check so you can diagnose a RED; the script is the gate, this is the reference.
 
 ### 3.1 Encoding check (UTF-8 with BOM or ASCII-only)
 
@@ -618,6 +618,11 @@ Intune converts unknown positive exit codes into an HRESULT: `0x80070000 + exitc
 | `0x8007064B` | 1611 | MSI component qualifier not present |
 | `0x80070642` | 1602 | User cancelled |
 | `0x80070652` | 1618 | Another install in progress |
+| `0x80070643` | 1603 | **Fatal error during installation** (perms, disk space, pending reboot, bad property) |
+| `0x80070645` | 1605 | Product not installed (on UNINSTALL this is effectively success - already gone) |
+| `0x80070653` | 1619 | Installation package could not be opened (path / permissions / corrupt) |
+| `0x80070666` | 1638 | Another version is already installed (uninstall old ProductCode, or ship the upgrade) |
+| `0x80070667` | 1639 | Invalid command-line argument (a property/switch is malformed - quoting!) |
 | `0x0` | 0 | Success |
 
 ### A.2 Typical root causes by symptom
@@ -673,6 +678,39 @@ AppWorkload.log sequence:
 - `lpExitCode N` - exit code
 - `Admin did NOT set mapping for lpExitCode: N` - the code was not in the return codes
 - `EnforcementErrorCode: -<huge>` - HRESULT as a signed int
+
+### A.4 Exit-code catalogue (cause -> reaction)
+
+**Windows Installer (MSI):**
+| Code | Meaning | Reaction |
+|---:|---|---|
+| 0 / 1707 | Success | map both as success |
+| 3010 | Success, soft reboot required | `softReboot`; never force a reboot during ESP |
+| 1641 | Success, installer initiated a reboot | `hardReboot`; avoid in silent/ESP - pass `/norestart` |
+| 1603 | Fatal error during installation | check perms, free disk, a PENDING REBOOT (clear it), and the MSI `/l*v` log - a custom action likely failed |
+| 1605 | Action valid only for installed products | on uninstall = already gone (treat as success); on repair = nothing to repair |
+| 1618 | Another installation is in progress | `retry`; ensure nothing else is mid-install |
+| 1619 | Package could not be opened | wrong path / no read access / corrupt download - re-fetch the MSI |
+| 1620 | Package could not be opened (invalid) | corrupt or incomplete MSI |
+| 1622 | Error opening the install log | the `/l*v` log path is not writable - fix the path |
+| 1625 | Install forbidden by system policy | a `DisableMSI` / policy blocks it |
+| 1635 | Patch package could not be opened | bad `.msp` path |
+| 1638 | Another version is already installed | uninstall the old ProductCode first, or ship a proper upgrade (REINSTALLMODE / new UpgradeCode) |
+| 1639 | Invalid command-line argument | a property/switch is malformed (quoting!) |
+| 1101 / 1612 / 1636 | Source / media unavailable | the install source moved - repair the source list or re-deploy |
+
+**PSADT v4 toolkit codes:**
+| Code | Meaning | Reaction |
+|---:|---|---|
+| 60001 | Unhandled runtime error in a deployment hook | the PSADT session log has the stack trace - fix the line it names |
+| 60002-60007 | Internal toolkit / session errors | check the PSADT log; usually a bad `$adtSession` value or a cmdlet misuse |
+| 60008 | Init / Import-Module failed (session never opened) | encoding/parse, a broken module path, or a type-data collision (A.2) |
+| 60012 | Deferral / a close-process still running | user deferred, or a `-CloseProcesses` app is still open |
+| 69000-69999 | Your own custom codes (Invoke-AppDeployToolkit.ps1) | define + document them in the package return codes |
+| 70000-79999 | Your own custom codes (Extensions module) | same |
+
+**Map `1603, 1619, 60001, 60008` as `failed`** return codes in Intune so a real failure surfaces (instead of
+"unknown exit code"); map `0 / 1707` success and `3010 / 1641` reboot. See Phase 5 / the upload `returnCodes`.
 
 ---
 
@@ -1365,3 +1403,147 @@ $c=$b.GetPixel(0,0); "{0}x{1}  cornerAlpha={2} (0=transparent,255=opaque) RGB=({
 Then **actually look at the image** to confirm it is the app's brand, not the PSADT default. Transparent
 (cornerAlpha=0) is preferred; an opaque-but-correct logo is acceptable (square it on its own background colour).
 The WRONG image is never acceptable.
+
+---
+
+## Appendix K: Script-only remediation / fix packages (ESP-safe)
+
+Some "apps" are not vendor installers but a remediation script (debloat, a config/permissions fix, copying
+files into place). They share one shape and a different detection/uninstall model from a normal app. Use this
+recipe when the deliverable is a PowerShell script, not an MSI/EXE.
+
+### K.1 The pattern
+- Bundle the script in `Files\<Fix>.ps1` (keep it verbatim if it is already tested).
+- **Install** = run the script via NATIVE 64-bit PowerShell (Appx/DISM cmdlets need 64-bit; the IME launches
+  Win32 apps 32-bit). Put the launch in an Extensions helper so Install + Repair share it.
+- **Repair** = re-run the same helper (idempotent).
+- **Uninstall** = a NO-OP that only clears the package's own state (its log/tag dir). NEVER remove the fixed
+  artifact - that would re-break what you fixed.
+- **Detection** = a script rule that checks the real desired END-STATE (a file/registry value the fix
+  establishes), so it is SELF-HEALING: if a later change breaks it again, detection goes negative and Intune
+  re-applies the fix.
+- **ESP-safe:** `DeployMode Silent`, no welcome/prompt, bound every external process with a timeout, never hang.
+- **Exit code + detection: be HONEST (do NOT just `exit 0`).** See K.7. The exit code reflects whether the fix
+  could RUN; detection reflects the real END-STATE. A blanket `exit 0` is a defect - it makes Intune report
+  green on failure.
+
+### K.2 64-bit relaunch guard (top of the bundled script)
+```powershell
+if ($env:PROCESSOR_ARCHITEW6432 -and -not [Environment]::Is64BitProcess) {
+    $ps64 = Join-Path $env:WINDIR 'sysnative\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path $ps64)) { Write-Error '64-bit PowerShell not found'; exit 1 }   # couldn't run -> non-zero
+    & $ps64 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+    exit $LASTEXITCODE   # propagate the child's HONEST exit code - do not hard-code 0 (K.7)
+}
+```
+(Not needed when the script only touches literal `Program Files (x86)` paths and no Appx/DISM - but harmless.)
+
+### K.3 Extensions helper (Install + Repair both call it)
+```powershell
+function Invoke-FixScript {
+    [CmdletBinding()] param([Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$FilesDirectory)
+    begin { Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState }
+    process {
+        try { try {
+            $script = Join-Path $FilesDirectory 'Fix.ps1'
+            if (-not (Test-Path -LiteralPath $script)) { throw "Fix script not found: $script" }
+            $sysNative = Join-Path $env:WinDir 'sysnative\WindowsPowerShell\v1.0\powershell.exe'
+            $system32  = Join-Path $env:WinDir 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $ps = if (([Environment]::Is64BitOperatingSystem) -and (-not [Environment]::Is64BitProcess) -and (Test-Path $sysNative)) { $sysNative } else { $system32 }
+            Start-ADTProcess -FilePath $ps -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`"" -CreateNoWindow -SuccessExitCodes @(0)
+        } catch { Write-Error -ErrorRecord $_ } }
+        catch { Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ }
+    }
+    end { Complete-ADTFunction -Cmdlet $PSCmdlet }
+}
+```
+
+### K.4 Hooks
+- **Install / Repair:** `Show-ADTInstallationProgress`; optionally `Show-ADTInstallationWelcome -CloseProcesses <proc> -Silent`
+  when the fix replaces in-use files; then `Invoke-FixScript -FilesDirectory $adtSession.DirFiles`.
+- **Uninstall:** `Remove-ADTFolder -LiteralPath "$env:ProgramData\<StateDir>"` (the package's own log/tag only).
+
+### K.5 Detection (script rule, run as System, 64-bit)
+Contract: write to stdout + `exit 0` when the fix is in place; emit nothing (still `exit 0`) when not.
+```powershell
+$marker = 'C:\path\to\the-real-end-state'   # e.g. the copied file, or the tag the fix writes
+if (Test-Path -LiteralPath $marker) { Write-Output "Detected: $marker"; exit 0 }
+exit 0
+```
+Prefer the **real end-state** (the file/registry value the fix establishes) as the marker, so detection
+self-heals AND a failed fix shows as "not installed" (-> retry, and visible in Intune). If you must use a tag,
+write it ONLY at the end of a SUCCESSFUL run - NEVER in a `finally` that also runs on a crash (that reports
+green on failure).
+
+### K.6 Intune + ESP wiring
+- Install/Uninstall command: `Invoke-AppDeployToolkit.exe -DeploymentType Install|Uninstall -DeployMode Silent`;
+  install behavior **System**; detection = the script rule (Run as 32-bit = No).
+- For ESP: assign **Required**; add it as a **blocking app** ONLY if its success is genuinely a prerequisite for
+  the device. A blocking app that fails (non-zero OR negative detection) holds the OOBE - which is CORRECT for a
+  real malfunction. If a non-critical cleanup must never block enrollment, make that an explicit, documented
+  choice: either do NOT mark it blocking, or map its "couldn't-run" code as a success return code in Intune.
+  Never paper over failures with a blanket `exit 0`.
+
+### K.7 Exit codes + detection - the honest model (READ THIS)
+A blanket `exit 0` is a DEFECT: Intune then shows green even when the fix did nothing, and the only signal is the
+log. Decouple two concerns:
+
+- **Exit code = could the fix RUN?**
+  - Ran to completion (even with tolerable, logged per-item best-effort failures) -> `0`.
+  - Could NOT run / crashed (no admin, the 64-bit relaunch failed, enumeration threw, a required step failed) ->
+    **non-zero** (e.g. `1`). Surfaces as "failed" + retry. If you relaunch into 64-bit, **propagate the child's
+    exit code** (`& $ps64 ...; exit $LASTEXITCODE`) - do not hard-code `exit 0` in the launcher branch.
+- **Detection = is the real END-STATE present?** Point it at what the fix establishes (the copied file, the
+  registry value), NOT an unconditional tag. A failed fix -> end-state absent -> "not installed" -> retry, and
+  visible in Intune. If you use a tag, write it ONLY on a successful run (never in a `finally`).
+- **Log the truth regardless:** per-item PASS/FAIL + a final summary (failure count) under
+  `%ProgramData%\<App>\...log`, so a best-effort partial is auditable.
+
+Decision rule by package type:
+| Type | Exit code | Detection |
+|---|---|---|
+| Real installer (MSI/EXE) | map real codes: `0/1707` ok, `3010/1641` reboot, **else failed** - never force 0 | MSI ProductCode / file version |
+| Important fix (e.g. Cisco UI) | failure -> **non-zero** (Intune failed + retry) | the real end-state (e.g. the UI binary present) |
+| Non-critical ESP cleanup (debloat) | couldn't-run -> **non-zero**; best-effort partial -> `0` (logged) | real end-state, or a tag written ONLY on success |
+
+The "never block enrollment" goal is reached by the ESP assignment choice + return-code mapping (K.6), NOT by
+lying about the exit code.
+
+---
+
+## Appendix L: Installer technologies + silent switches (consult BEFORE web research)
+
+Phase 2 research checks THIS table first and only web-searches to confirm the exact build's quirks. "Identify"
+= how to recognise the tech; switches are the common silent install / uninstall / no-reboot / log; "Detect" =
+the natural detection rule.
+
+### L.1 Identify the technology
+- File metadata/strings: `(Get-Item setup.exe).VersionInfo`; a `strings`-style scan for marker text.
+- **Inno Setup:** EXE contains `Inno Setup` / `JR.Inno.Setup`; uninstaller `unins000.exe`.
+- **NSIS:** EXE contains `Nullsoft.NSIS` / `NullsoftInst`; uninstaller `Uninstall.exe` / `uninst.exe`.
+- **InstallShield:** `setup.exe` + `*.cab` / `data1.hdr` / `0x0409.ini`; strings `InstallShield`.
+- **WiX Burn bundle:** EXE strings `WixBundle` / `.wixburn`; has a `BundleProviderKey`.
+- **MSI:** a `.msi` (or an EXE that strings-shows `Windows Installer` / extracts an MSI).
+- **Squirrel:** `Update.exe` + `*.nupkg`; per-user `%LocalAppData%\<App>`.
+- **MSIX/AppX:** `.msix` / `.appx` / `.msixbundle`.
+
+### L.2 Switch reference
+| Tech | Silent install | Silent uninstall | No reboot | Log | Detect | Notes |
+|---|---|---|---|---|---|---|
+| **MSI** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | props as `NAME=value`; `REBOOT=ReallySuppress` |
+| **MSI-wrapped EXE** | vendor flag, often `/s /v"/qn /norestart"` | extracted MSI ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | prefer extracting the MSI (`/a` admin install or `setup.exe /extract`) |
+| **InstallShield (Basic MSI)** | `setup.exe /s /v"/qn"` | ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | |
+| **InstallShield (InstallScript)** | `setup.exe /s /f1"setup.iss"` | `setup.exe /s /x /f1"uninstall.iss"` | (ISS-driven) | `/f2"log"` | registry / file | record the `.iss` with `setup.exe /r /f1"setup.iss"` |
+| **Inno Setup** | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP-` | `unins000.exe /VERYSILENT` | `/NORESTART` | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none |
+| **NSIS** | `setup.exe /S` | `Uninstall.exe /S` | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE |
+| **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
+| **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
+| **MSIX / AppX** | provisioning (`Add-AppxProvisionedPackage`) | `Remove-AppxPackage` | n/a | n/a | package name / version | different model; not a classic Win32 installer |
+| **install4j / IzPack (Java)** | `installer.exe -q -overwrite` / `-options resp.txt` | uninstaller `-q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file | response-file driven |
+| **InstallAware / Wise** | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
+
+### L.3 Detection-rule choice
+- MSI / MSI-wrapped -> **MSI ProductCode** rule (upload `-MsiProductCode`).
+- EXE / other -> a **PowerShell detection script** (file version / registry value), OR an Intune **file/registry
+  version rule**. Never mix a script rule and a file/registry rule for the same app.
+- Per-user installers (Squirrel) detect under `%LocalAppData%` - run detection in the right context.

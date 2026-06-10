@@ -129,10 +129,13 @@ function Get-LogoDataUri {
     $initials = -join (($AppName -split '\s+' | Where-Object { $_ } | Select-Object -First 2) |
         ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() })
     if (-not $initials) { $initials = 'AP' }
+    # XML-escape the initials (AppName-derived) and base64-encode the data URI so a special character
+    # in AppName can neither break the SVG nor inject markup.
+    $initialsSafe = [System.Security.SecurityElement]::Escape($initials)
     $svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>" +
            "<text x='60' y='78' font-family='Segoe UI,Arial,sans-serif' font-size='56' font-weight='700' " +
-           "fill='%230F6CBD' text-anchor='middle'>$initials</text></svg>"
-    return "data:image/svg+xml,$svg"
+           "fill='#0F6CBD' text-anchor='middle'>$initialsSafe</text></svg>"
+    return "data:image/svg+xml;base64,$([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($svg)))"
 }
 
 # ----------------------------------------------------------------------------- scalar values
@@ -170,7 +173,7 @@ $infoUrl    = Get-Val 'InfoUrl' ''
 $privacyUrl = Get-Val 'PrivacyUrl' ''
 $vInfoUrl    = if ($infoUrl) { Codei $infoUrl } else { Bspan 'nicht gesetzt' 'not set' }
 $vPrivacyUrl = if ($privacyUrl) { Codei $privacyUrl } else { Bspan 'nicht gesetzt' 'not set' }
-$vNotes = Esc (Get-Val 'Notes' "PSADT v$psadtVersion &middot; pkg rev $pkgRev &middot; $created")
+$vNotes = Esc (Get-Val 'Notes' "PSADT v$psadtVersion - pkg rev $pkgRev - $created")
 
 $logoLeaf = ''
 if ($LogoPath) { $logoLeaf = Split-Path $LogoPath -Leaf }

@@ -23,7 +23,8 @@ if (-not (Test-Path $configPath)) {
     return [pscustomobject]@{ Exists = $false; Config = $null; Missing = $required; Path = $configPath }
 }
 
-$cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+try { $cfg = Get-Content $configPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+catch { return [pscustomobject]@{ Exists = $true; Config = $null; Missing = $required; Path = $configPath; Error = "config.json is malformed: $($_.Exception.Message)" } }
 $missing = [System.Collections.Generic.List[string]]::new()
 foreach ($key in $required) {
     if ([string]::IsNullOrWhiteSpace([string](Get-ByPath $cfg $key))) { $missing.Add($key) }
