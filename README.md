@@ -203,6 +203,14 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.7.0 - 10.06.2026
+- **Value-adding extensions.** New `scripts/Invoke-PsadtPreflight.ps1` turns the Phase-5 Reviewer gate into one
+  deterministic `GREEN/RED` tool (encoding/parse/v3-scan/top-level/structure/GUID-to-`-FilePath`), with a Pester
+  suite. New guide **Appendix K** (script-only remediation / fix packages, ESP-safe — the debloat/Cisco pattern)
+  and **Appendix L** (installer technologies + silent switches, a lookup consulted before web research). Expanded
+  error-code catalogue (MSI 1603/1605/1619/1638/1639…, PSADT 60001/60008 + ranges) in guide Appendix A and the
+  SKILL.md troubleshooting table. SKILL.md rewired to point at the pre-flight script and the new appendices.
+
 ### 0.6.2 - 10.06.2026
 - **Audit & harden.** Agent-based audit + source-level verification (discarded ~8 false positives). Fixes: the
   guide's broken `New-ADTTemplate` "Extended scaffold" (passing app metadata params that v4.1.x rejects);

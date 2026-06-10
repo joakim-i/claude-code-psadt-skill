@@ -2,6 +2,31 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.7.0 — 2026-06-10 — Value-adding extensions (pre-flight tool, recipes, knowledge)
+
+### Added
+- **`scripts/Invoke-PsadtPreflight.ps1`** — the Phase-5 Reviewer gate as one deterministic, testable tool.
+  `-PackagePath <pkg>` returns `{ Overall='GREEN'|'RED'; Checks=@(...) }` covering encoding (ASCII/BOM), AST
+  parse, v3-cmdlet scan (launcher + Extensions only; a private `Write-Log` in a bundled `Files\*.ps1` is no
+  longer a false positive), top-level-statement scan, the structural acid-test (all three hooks defined +
+  Extensions helpers actually called), and the GUID→`-FilePath` anti-pattern. New `tests/Invoke-PsadtPreflight.Tests.ps1`
+  (clean package = GREEN; em-dash / v3 cmdlet / GUID-to-`-FilePath` / missing-hook fixtures = RED).
+- **Guide Appendix K — script-only remediation / fix packages (ESP-safe).** Codifies the recurring
+  debloat/Cisco-style pattern: run a bundled PS script via native 64-bit PowerShell (Extensions helper shared by
+  Install + Repair), self-healing file/tag detection, no-op uninstall that never removes the fixed artifact,
+  `DeployMode Silent`, always exit 0, `CloseProcesses` for in-use files, ESP blocking-app wiring.
+- **Guide Appendix L — installer technologies + silent switches.** A lookup (consulted before web research):
+  identify MSI / MSI-wrapped EXE / InstallShield / Inno Setup / NSIS / WiX Burn / Squirrel / MSIX / install4j /
+  Wise, with silent install/uninstall/no-reboot/log switches and the natural detection rule.
+- **Expanded error-code catalogue** (guide Appendix A.1 + new A.4; highest-frequency rows in the SKILL.md
+  troubleshooting table): MSI 1603/1605/1618/1619/1620/1622/1625/1635/1638/1639/110x, the matching `0x8007…`
+  HRESULTs, and the PSADT 60001/60008 + 60002–60007/69000+/70000+ ranges — each with a concrete reaction.
+
+### Changed
+- **SKILL.md** Phase 5 now points at the pre-flight script (GREEN required); Phase 2 research consults Appendix L
+  first (and Appendix K for script-only fixes); reference lookup + anti-patterns updated. SKILL.md stays a lean
+  control plane (no inlined code).
+
 ## 0.6.2 — 2026-06-10 — Audit & harden (scripts, report, guide)
 
 A full agent-based audit (3 parallel reviewers) followed by source-level verification of every finding
