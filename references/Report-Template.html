@@ -37,7 +37,11 @@
     --mono:          "Cascadia Code","Cascadia Mono",Consolas,"Courier New",monospace;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  /* Always reserve the vertical scrollbar gutter. Without this, at widths where the
+     content height sits right at the viewport edge the scrollbar toggles on/off, each
+     toggle changes the content width, which (via the header's vw-based clamps) reflows
+     and re-toggles -> a wild flicker loop. Reserving the gutter keeps the width constant. */
+  html { scroll-behavior: smooth; overflow-y: scroll; scrollbar-gutter: stable; }
   body {
     margin: 0; font-family: var(--font); color: var(--ink); background: var(--bg);
     font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
