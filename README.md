@@ -203,6 +203,12 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.6.1 - 10.06.2026
+- **Report header flicker fixed** (`references/Report-Template.html`): at widths where the content height met
+  the viewport edge, the vertical scrollbar toggled on/off and the header's `vw`-based `clamp()` padding and
+  `h1` font-size reflowed on every toggle — a wild flicker loop. Reserving the scrollbar gutter
+  (`html { overflow-y: scroll; scrollbar-gutter: stable; }`) keeps the width constant and breaks the loop.
+
 ### 0.6.0 - 10.06.2026
 - **SKILL.md slimmed to a control plane** (733 → 244 lines, ~67% fewer tokens) via progressive disclosure:
   the long inline code moved into the reference guide (new **Appendix I** WinGet + **Appendix J** app-logo),
