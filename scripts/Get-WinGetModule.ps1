@@ -19,8 +19,8 @@ $configPath   = Join-Path $SkillRoot 'config.json'
 
 $installedTag = $null
 if (Test-Path $configPath) {
-    $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
-    $installedTag = $cfg.tooling.winGetModuleVersion
+    try { $installedTag = (Get-Content $configPath -Raw | ConvertFrom-Json).tooling.winGetModuleVersion }
+    catch { Write-Warning "config.json unreadable ($($_.Exception.Message)); proceeding without a recorded version." }
 }
 
 $latestTag = $null
@@ -59,8 +59,11 @@ try {
     $tmpDir = Join-Path $env:TEMP 'PSADTWinGet-extract'
     Invoke-WebRequest $downloadUrl -OutFile $tmpZip -UseBasicParsing
 
-    $zipBytes = [System.IO.File]::ReadAllBytes($tmpZip)
-    if ($zipBytes[0] -ne 0x50 -or $zipBytes[1] -ne 0x4B) { throw "Downloaded file is not a valid ZIP (missing PK header)." }
+    # Read only the 2-byte PK header (not the whole multi-MB zip into memory); guard tiny/empty downloads.
+    $hdr = New-Object byte[] 2
+    $zfs = [System.IO.File]::OpenRead($tmpZip)
+    try { $nRead = $zfs.Read($hdr, 0, 2) } finally { $zfs.Dispose() }
+    if ($nRead -lt 2 -or $hdr[0] -ne 0x50 -or $hdr[1] -ne 0x4B) { throw "Downloaded file is not a valid ZIP (missing PK header)." }
 
     Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive $tmpZip -DestinationPath $tmpDir -Force

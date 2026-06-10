@@ -127,6 +127,8 @@ try {
     if (Test-Path $localChangelog) { $result.LocalVersion = Get-TopChangelogVersion (Get-Content $localChangelog -Raw) }
     $result.Applied = $true
 } catch {
+    # Clean up the archive temp files on failure too (the success path above already removes them).
+    if ($tmpZip -or $tmpDir) { Remove-Item @($tmpZip, $tmpDir | Where-Object { $_ }) -Recurse -Force -ErrorAction SilentlyContinue }
     $result.Action = 'UpdateFailed'; $result.Error = "$_"
 }
 [pscustomobject]$result
