@@ -203,6 +203,15 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.6.2 - 10.06.2026
+- **Audit & harden.** Agent-based audit + source-level verification (discarded ~8 false positives). Fixes: the
+  guide's broken `New-ADTTemplate` "Extended scaffold" (passing app metadata params that v4.1.x rejects);
+  the Graph uploader leaving its extracted work dir (with the AES keys in `Detection.xml`) in `%TEMP%` (now
+  `try/finally` cleanup); the report `Notes` default `&middot;` double-escape; the fallback initials-SVG logo
+  now XML-escapes + base64-encodes (no markup injection, with a regression test). Robustness: `Invoke-Graph`
+  429/5xx retry with `Retry-After`; malformed-`config.json` safety in four scripts; WinGet 2-byte header read;
+  symmetric temp cleanup in self-update. Graph request shapes left untouched.
+
 ### 0.6.1 - 10.06.2026
 - **Report header flicker fixed** (`references/Report-Template.html`): at widths where the content height met
   the viewport edge, the vertical scrollbar toggled on/off and the header's `vw`-based `clamp()` padding and

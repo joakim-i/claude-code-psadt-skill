@@ -2,6 +2,35 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.6.2 — 2026-06-10 — Audit & harden (scripts, report, guide)
+
+A full agent-based audit (3 parallel reviewers) followed by source-level verification of every finding
+(which discarded ~8 false positives). Only verified weaknesses were fixed; the proven Graph request shapes
+were left untouched.
+
+### Fixed
+- **Guide doc-vs-code that broke packaging** (`references/PSADTv4-Deployment-Guide.md`): the "Extended scaffold"
+  told the agent to pass `-AppVendor/-AppName/-AppVersion/...` to `New-ADTTemplate`, which v4.1.x rejects
+  ("A parameter cannot be found …"). Removed it; metadata goes into `$adtSession` after scaffolding (matches SKILL.md).
+- **Upload leaves AES keys in `%TEMP%`** (`scripts/Invoke-IntuneWin32Upload.ps1`): the extracted work dir
+  (whose `Detection.xml` holds `encryptionKey/macKey/IV/mac`) is now removed via `try/finally` on success,
+  dry-run, or throw.
+- **Report `Notes` double-escape** (`scripts/New-PsadtReport.ps1`): the default `Notes` contained `&middot;`,
+  which `Esc` turned into a literal `&amp;middot;`. Switched the default to ASCII separators.
+- **Fallback logo hardening** (`scripts/New-PsadtReport.ps1`): the initials-tile SVG now XML-escapes the
+  AppName-derived initials and is emitted as a base64 data URI (a special character can no longer break or
+  inject markup). New regression test in `tests/New-PsadtReport.Tests.ps1`.
+
+### Changed (robustness)
+- **Graph throttling retry** (additive): `Invoke-Graph` now retries 429 / 5xx honouring `Retry-After`
+  (max 4 attempts); request bodies unchanged.
+- **Malformed-config safety**: `Get-PsadtConfig`, `Get-IntuneWinAppUtil`, `Get-WinGetModule`, `Set-PsadtConfig`
+  now handle a corrupt `config.json` with a clear message instead of a raw `ConvertFrom-Json` throw.
+- **Download hardening**: WinGet zip header check reads only 2 bytes (not the whole archive) and guards a
+  <2-byte download; `Get-IntuneWinAppUtil` releases its file handle via `finally`; `Update-PsadtSkill` cleans
+  its temp files on the failure path too.
+- Doc comment corrected: block-blob upload uses 4 MB blocks (was mislabelled "6 MB").
+
 ## 0.6.1 — 2026-06-10 — Report header: fix scrollbar-feedback flicker
 
 ### Fixed
