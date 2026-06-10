@@ -2,6 +2,42 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.6.1 — 2026-06-10 — Report header: fix scrollbar-feedback flicker
+
+### Fixed
+- **`references/Report-Template.html` — wild header flicker at certain viewport widths.** The dossier did not
+  reserve the vertical scrollbar gutter, so at widths where the content height landed at the viewport edge the
+  scrollbar toggled on/off; each toggle changed the content width, and the header's `vw`-based `clamp()` padding
+  and `h1` font-size reflowed on every toggle, producing a rapid flicker loop. Reserving the gutter
+  (`html { overflow-y: scroll; scrollbar-gutter: stable; }`) holds the width constant and breaks the loop.
+
+## 0.6.0 — 2026-06-10 — SKILL.md slimmed to a control plane (progressive disclosure)
+
+### Changed
+- **`SKILL.md` rewritten as a lean orchestrator: 733 → 244 lines (~16k → ~3.5k tokens, ~67% smaller).** It
+  now holds the binding conventions, the workflow skeleton, the decision gates, and pointers - the long
+  inline PowerShell blocks (encoding fix, pre-flight scans, packaging, logo fetch, MSI icon-table extraction,
+  WinGet lifecycle, upload examples) moved into the reference guide and load on demand. No behaviour and no
+  binding rule was dropped - all 11 conventions, the self-update flow, all phases, the troubleshooting table,
+  and the anti-pattern list are preserved (verbatim where they are rules, relocated where they are code).
+- **Autonomy:** intake is restructured from 8 mandatory questions into **4 decision gates**; everything
+  researchable (version, installer type, silent/uninstall/repair switches, ProductCode, Intune issues) is now
+  a researched, transparently-stated assumption instead of a question. `AskUserQuestion` is still the only way
+  to ask, and the test/upload consents are unchanged.
+- **Sub-agent architecture:** explicit Orchestrator / Researcher×3 / Builder / Reviewer roles with hard
+  handoff gates (no packaging before a GREEN pre-flight; no upload before a GREEN SYSTEM test), wired to
+  `superpowers:dispatching-parallel-agents` and `superpowers:requesting-code-review`.
+- **Error handling:** a single **blockade protocol** (`PROBLEM / TRIED / OPTIONS 1,2`) replaces the scattered
+  "stop and hand back" notes.
+- **Frontmatter `description`** trimmed to triggering conditions only (no workflow summary), per Anthropic
+  skill-authoring guidance.
+
+### Added
+- **`references/PSADTv4-Deployment-Guide.md` — Appendix I (WinGet packaging)** and **Appendix J (app-logo
+  acquisition + verification)**: the WinGet discovery/provisioning/hook/detection code and the logo
+  source-priority / Wikimedia / MSI icon-table / corner-pixel-verification code, lifted verbatim from the old
+  SKILL.md so nothing is lost. The guide now spans Appendix A–J.
+
 ## 0.5.3 — 2026-06-09 — Guide: code inside code-fences is now English/ASCII
 
 ### Changed

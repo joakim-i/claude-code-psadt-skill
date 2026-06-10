@@ -154,7 +154,7 @@ psadt-deploy/
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
 │  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 7.5)
-├─ references/   guide (App. A–H) + Report-Template.html + app-registration.md
+├─ references/   guide (App. A–J) + Report-Template.html + app-registration.md
 ├─ tests/        Pester suite for the scripts
 ├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
 ├─ config.json   (gitignored)  machine-local settings (intune.* block)
@@ -202,6 +202,19 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.6.1 - 10.06.2026
+- **Report header flicker fixed** (`references/Report-Template.html`): at widths where the content height met
+  the viewport edge, the vertical scrollbar toggled on/off and the header's `vw`-based `clamp()` padding and
+  `h1` font-size reflowed on every toggle — a wild flicker loop. Reserving the scrollbar gutter
+  (`html { overflow-y: scroll; scrollbar-gutter: stable; }`) keeps the width constant and breaks the loop.
+
+### 0.6.0 - 10.06.2026
+- **SKILL.md slimmed to a control plane** (733 → 244 lines, ~67% fewer tokens) via progressive disclosure:
+  the long inline code moved into the reference guide (new **Appendix I** WinGet + **Appendix J** app-logo),
+  loaded on demand. Intake restructured into **4 decision gates** (researchable facts become stated
+  assumptions, not questions); explicit **sub-agent roles** (Researcher×3 / Builder / Reviewer) with GREEN
+  handoff gates; a single **blockade protocol** for errors. No binding rule or behaviour dropped.
 
 ### 0.5.2 - 08.06.2026
 - **HTML package report is now always generated** (upload or not) by `scripts/New-PsadtReport.ps1` from the

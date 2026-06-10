@@ -1177,3 +1177,191 @@ Uploading a new version must **not** remove the existing one. `Invoke-IntuneWin3
 
 ### H.10 Logo guard
 The Company-Portal logo must be the REAL application logo. The PSADT template's `Assets\AppIcon.png` (generic coloured ">" mark) is NOT it - re-using it is a real mistake that slipped past a naive "square + alpha" check. The script keeps a SHA256 blocklist of PSADT default assets and refuses them unless `-AllowDefaultLogo`. When verifying a downloaded logo, `IsAlphaPixelFormat` is True even for opaque images - sample a real corner pixel and visually confirm the brand. An opaque-but-correct logo is acceptable (square it on its own background colour); the WRONG image is not.
+
+---
+
+## Appendix I: WinGet packaging (opt-in, never the default)
+
+WinGet is **strictly opt-in** (intake Q2). Use the app's native installer (MSI/EXE/...) unless the user
+*explicitly* chose "WinGet package". Never assume, recommend, or auto-select it even if a WinGet package exists.
+Everything below applies only after that explicit choice.
+
+### I.1 Package discovery (replaces the Phase 0.3 silent-switch research)
+
+`Find-ADTWinGetPackage` comes from `PSAppDeployToolkit.WinGet`. Import it explicitly before calling
+(at discovery time on the build box — at deployment time the package's auto-loader handles it):
+```powershell
+Import-Module '<skillRoot>\tools\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1' -ErrorAction SilentlyContinue
+```
+**Always search by name first** when the exact ID is not known with certainty. WinGet IDs follow
+`Publisher.AppName` dot-notation, each word its own segment (`Valve.Steam`, `Microsoft.PowerShell.Preview`,
+NOT `MicrosoftPowerShellPreview`). Guessing the concatenated form wastes a lookup.
+```powershell
+# Step 1: discover the exact ID by display name
+Find-ADTWinGetPackage -Name '<AppName>' | Select-Object Id, Name, Version, Source | Format-Table -AutoSize
+# Step 2: confirm the chosen ID resolves
+Find-ADTWinGetPackage -Id '<ConfirmedPackageId>' | Format-List Id, Name, Version, Source
+```
+Not found after both steps → STOP and ask the user to correct the ID; never scaffold with an invalid ID.
+**Fallback** if the module is unavailable on the build box: look up the ID at https://winstall.app/ (web UI over
+winget-pkgs). Last resort only — `Find-ADTWinGetPackage` is preferred because it confirms the ID resolves at
+runtime on this machine.
+
+Research the manifest for detection hints (ProductCode, installer type, exe names, install path):
+`https://github.com/microsoft/winget-pkgs/tree/master/manifests/<first-letter>/<publisher>/<app>/<version>/`.
+For **portable** packages (`InstallerType: portable`) WinGet places files under
+`%ProgramFiles%\WinGet\Packages\<Id>_<Arch>\` and shims in `%ProgramFiles%\WinGet\Links\`; the exact exe names
+come from the manifest `.yaml` — guard shortcut creation with `if (Test-Path $exePath)`.
+Add to the Intune-pitfalls stream: `"<AppName>" winget intune deployment known issues`.
+
+### I.2 Scaffold: provision the extension module into the package
+
+```powershell
+pwsh scripts/Get-WinGetModule.ps1 -SkillRoot '<skillRoot>' -PackagePath '<pkg>'
+(Import-PowerShellDataFile '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1').ModuleVersion
+```
+PSADT's extension auto-loader discovers `PSAppDeployToolkit.WinGet\` by folder-name match and imports it
+automatically — no `Import-Module` in the deployment script. `Files\` stays empty (nothing to bundle). Set
+`AppVersion = 'Latest'` in `$adtSession` (or a pinned version); read `AppArch` from the manifest installer type.
+
+### I.3 Hook patterns
+
+```powershell
+# Install-ADTDeployment
+Repair-ADTWinGetPackageManager                                        # self-heal WinGet before every operation
+Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent # add -Version '<ver>' if pinned
+
+# Uninstall-ADTDeployment
+Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent
+
+# Repair-ADTDeployment
+try {
+    Repair-ADTWinGetPackage -Id '<WinGetId>'
+} catch {
+    Write-ADTLogEntry -Message "WinGet repair not supported; performing uninstall + reinstall."
+    Uninstall-ADTWinGetPackage -Id '<WinGetId>' -Mode Silent
+    Repair-ADTWinGetPackageManager
+    Install-ADTWinGetPackage -Id '<WinGetId>' -Scope Machine -Mode Silent
+}
+```
+
+### I.4 Pre-flight (in addition to 3.1–3.6)
+
+```powershell
+# Check 4: WinGet extension module present in the package
+$mm = '<pkg>\PSAppDeployToolkit.WinGet\PSAppDeployToolkit.WinGet.psd1'
+if (Test-Path $mm) { "WinGet module: $((Import-PowerShellDataFile $mm).ModuleVersion) - OK" }
+else { "WinGet module MISSING - run: pwsh scripts/Get-WinGetModule.ps1 -PackagePath '<pkg>'" }
+```
+The acid test (3.3) WILL trigger a real install for WinGet — always use the Appendix C stub instead of skipping;
+defer the live install/uninstall/repair verification to the SYSTEM test / Phase 6 on a DEV VM.
+
+### I.5 Detection (registry/file only — the module is NOT on the device at detection time)
+
+The `PSAppDeployToolkit.WinGet` module is bundled inside the `.intunewin` and extracted at install time only —
+it is **not** present during Intune's detection phase. Never use `Get-ADTWinGetPackage` in a detection script.
+```powershell
+# Detect-<AppName>.ps1 - registry-based, works regardless of ProductCode stability
+$regBases = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+foreach ($base in $regBases) {
+    $match = Get-ChildItem $base -ErrorAction SilentlyContinue | Get-ItemProperty |
+        Where-Object { $_.DisplayName -like '<AppName>*' } | Select-Object -First 1
+    if ($match) { Write-Output "Detected: $($match.DisplayName) $($match.DisplayVersion)"; exit 0 }
+}
+exit 1
+```
+For a stable manifest `ProductCode`, use the direct GUID key (`HKLM:\...\Uninstall\{<ProductCode>}`).
+
+### I.6 Dossier additions for WinGet
+
+- Requirements table: add `Windows Package Manager (WinGet) >= 1.7.10582` — note that
+  `Repair-ADTWinGetPackageManager` in the install hook self-heals this automatically.
+- Detection note: registry/file detection only (the module is not present at detection time).
+
+### I.7 WinGet anti-patterns
+
+- Defaulting to / recommending / auto-selecting WinGet — it is strictly opt-in.
+- `-Scope User` in Intune (SYSTEM has no mounted user hive) — always `-Scope Machine`.
+- `Get-ADTWinGetPackage` in a detection script (module absent at detection time).
+- Skipping `Repair-ADTWinGetPackageManager` before install.
+- Mixing `Install-ADTWinGetPackage` with `Start-ADTProcess`/`Start-ADTMsiProcess` in one hook.
+- Bare WinGet cmdlets without the `ADT` prefix (`Install-WinGetPackage`, `Repair-WinGetPackageManager`, ...) —
+  those bypass logging/error-handling/the PSADT session; always use the `*-ADTWinGet*` extension cmdlets.
+
+---
+
+## Appendix J: App logo - acquisition + verification
+
+The logo is uploaded separately (Intune **App information** tab / Phase 7.5); it is NOT part of the
+`.intunewin` (no repack on logo change). Obtain the **REAL** application logo (PNG, transparent, >=512px,
+square preferred) → `<pkg>\Assets\<App>-Logo.png` AND a copy in `Output\<App>\`. **Never** ship the PSADT
+default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload script blocks them by SHA256).
+
+### J.1 License-clear sources, in priority order
+
+1. **Microsoft products:** `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png`
+   (transparent PNG, direct download; `<product>` lowercase, e.g. `powershell`, `sqlserver`, `azure`).
+2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/`).
+3. **Wikimedia Commons** (stable URLs, SVG rendered server-side as transparent PNG):
+   ```powershell
+   $api = "https://commons.wikimedia.org/w/api.php?action=query&titles=$([uri]::EscapeDataString('File:<Logo>.svg'))&prop=imageinfo&iiprop=url&iiurlwidth=1024&format=json"
+   $thumb = ((Invoke-RestMethod $api -Headers @{'User-Agent'='PSADT-pkg/1.0'}).query.pages.PSObject.Properties.Value).imageinfo[0].thumburl
+   Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
+   ```
+   Avoid third-party PNG portals (stickpng, toppng, nicepng, ...) — hotlink protection/ads/poor quality.
+4. **MSI Icon-table fallback** (when web download fails): MSI installers embed `.ico` files in an `Icon`
+   table. `System.Drawing.Icon` silently falls back to 48x48 when the 256x256 frame is PNG-compressed inside
+   the `.ico` on .NET 4.x — parse the raw ICO binary and extract the largest frame directly:
+   ```powershell
+   Add-Type -AssemblyName System.Drawing
+   Add-Type -TypeDefinition @'
+   using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
+   public class IcoDibReader {
+       public static Bitmap FromDib32(byte[] dib, int width, int height) {
+           int pixelDataSize = width * height * 4;
+           var pixels = new byte[pixelDataSize];
+           Array.Copy(dib, 40, pixels, 0, pixelDataSize);
+           var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+           var bd = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+           int rb = width * 4;
+           for (int r = 0; r < height; r++) Marshal.Copy(pixels, (height-1-r)*rb, IntPtr.Add(bd.Scan0, r*bd.Stride), rb);
+           bmp.UnlockBits(bd); return bmp;
+       }
+   }
+   '@ -ReferencedAssemblies 'System.Drawing'
+   $tmpDir = "$env:TEMP\MsiIconExport"; New-Item $tmpDir -ItemType Directory -Force | Out-Null
+   $db = [System.Activator]::CreateInstance([System.Type]::GetTypeFromProgID('WindowsInstaller.Installer')).OpenDatabase('<path-to.msi>', 0)
+   $db.Export('Icon', $tmpDir, 'Icon.idt')   # streams export as <IconName>.ico.ibd under a subfolder 'Icon'
+   $icoPath = Get-ChildItem "$tmpDir\Icon" -Filter '*.ibd' | Sort-Object Length -Descending | Select-Object -ExpandProperty FullName -First 1
+   $allBytes = [System.IO.File]::ReadAllBytes($icoPath)
+   $count = [BitConverter]::ToUInt16($allBytes, 4); $bestW = 0; $bestOff = 0; $bestSize = 0
+   for ($i = 0; $i -lt $count; $i++) {
+       $base = 6 + $i * 16; $w = [int]$allBytes[$base]; if ($w -eq 0) { $w = 256 }
+       if ($w -gt $bestW) { $bestW = $w; $bestOff = [BitConverter]::ToUInt32($allBytes, $base+12); $bestSize = [BitConverter]::ToUInt32($allBytes, $base+8) }
+   }
+   $frame = New-Object byte[] $bestSize; [Array]::Copy($allBytes, $bestOff, $frame, 0, $bestSize)
+   if ($frame[0] -eq 0x89 -and $frame[1] -eq 0x50) {
+       [System.IO.File]::WriteAllBytes('<output>.png', $frame)  # PNG-compressed frame: write directly
+   } else {
+       $biH = [Math]::Abs([BitConverter]::ToInt32($frame, 8)) / 2
+       $bmp = [IcoDibReader]::FromDib32($frame, $bestW, [int]$biH)
+       $bmp.Save('<output>.png', [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+   }
+   Remove-Item $tmpDir -Recurse -Force
+   ```
+
+### J.2 Verify (resolution + ACTUAL transparency + correct brand)
+
+`IsAlphaPixelFormat` only says the pixel *format* supports alpha — it is True even for a fully opaque image
+(a 7-Zip SVG rendered with an opaque black background still reported `Alpha=True`). Sample a real corner pixel:
+```powershell
+Add-Type -AssemblyName System.Drawing
+$b=[System.Drawing.Bitmap]::FromFile('<png>')
+$c=$b.GetPixel(0,0); "{0}x{1}  cornerAlpha={2} (0=transparent,255=opaque) RGB=({3},{4},{5})" -f $b.Width,$b.Height,$c.A,$c.R,$c.G,$c.B; $b.Dispose()
+```
+Then **actually look at the image** to confirm it is the app's brand, not the PSADT default. Transparent
+(cornerAlpha=0) is preferred; an opaque-but-correct logo is acceptable (square it on its own background colour).
+The WRONG image is never acceptable.
