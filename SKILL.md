@@ -245,6 +245,9 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - Uploading without the Phase 5.5 SYSTEM test passing Install + Uninstall.
 - Hand-rolling the pre-flight gate instead of running `scripts/Invoke-PsadtPreflight.ps1` (the GREEN/RED verdict
   is the gate); for a script-only fix, treating it like a vendor installer instead of following Appendix K.
+- A blanket `exit 0` in a fix/remediation script, or a detection tag written in a `finally` - both report GREEN
+  on failure. The exit code must reflect "could it run" (couldn't-run -> non-zero), detection the real end-state;
+  never block enrollment by lying about the exit code (guide K.7).
 
 ## Reference lookup
 

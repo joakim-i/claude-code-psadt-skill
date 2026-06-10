@@ -203,6 +203,14 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.7.5 - 10.06.2026
+- **Honest exit codes + detection (correctness fix).** Removed the dangerous "always `exit 0`" guidance from
+  guide Appendix K — a blanket `exit 0` (or a detection tag written in a `finally`) reports GREEN on failure.
+  New **K.7**: the exit code reflects whether the fix could RUN (couldn't-run -> non-zero; the 64-bit relaunch
+  propagates the child's exit code), detection reflects the real END-STATE (tag only on success), with a
+  per-package decision table; "never block enrollment" is now an explicit ESP-assignment + return-code-mapping
+  choice, not a masked exit code. SKILL.md anti-pattern added.
+
 ### 0.7.0 - 10.06.2026
 - **Value-adding extensions.** New `scripts/Invoke-PsadtPreflight.ps1` turns the Phase-5 Reviewer gate into one
   deterministic `GREEN/RED` tool (encoding/parse/v3-scan/top-level/structure/GUID-to-`-FilePath`), with a Pester

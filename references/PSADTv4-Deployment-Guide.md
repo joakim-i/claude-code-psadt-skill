@@ -1422,16 +1422,18 @@ recipe when the deliverable is a PowerShell script, not an MSI/EXE.
 - **Detection** = a script rule that checks the real desired END-STATE (a file/registry value the fix
   establishes), so it is SELF-HEALING: if a later change breaks it again, detection goes negative and Intune
   re-applies the fix.
-- **ESP-safe:** `DeployMode Silent`, no welcome/prompt, and the script should ALWAYS `exit 0` for the
-  "fix must not block enrollment" case (map a real failure to a non-zero code only when you WANT Intune to
-  retry). Bound every external process with a timeout; never hang.
+- **ESP-safe:** `DeployMode Silent`, no welcome/prompt, bound every external process with a timeout, never hang.
+- **Exit code + detection: be HONEST (do NOT just `exit 0`).** See K.7. The exit code reflects whether the fix
+  could RUN; detection reflects the real END-STATE. A blanket `exit 0` is a defect - it makes Intune report
+  green on failure.
 
 ### K.2 64-bit relaunch guard (top of the bundled script)
 ```powershell
 if ($env:PROCESSOR_ARCHITEW6432 -and -not [Environment]::Is64BitProcess) {
     $ps64 = Join-Path $env:WINDIR 'sysnative\WindowsPowerShell\v1.0\powershell.exe'
-    if (Test-Path $ps64) { & $ps64 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args }
-    exit 0
+    if (-not (Test-Path $ps64)) { Write-Error '64-bit PowerShell not found'; exit 1 }   # couldn't run -> non-zero
+    & $ps64 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+    exit $LASTEXITCODE   # propagate the child's HONEST exit code - do not hard-code 0 (K.7)
 }
 ```
 (Not needed when the script only touches literal `Program Files (x86)` paths and no Appx/DISM - but harmless.)
@@ -1468,14 +1470,44 @@ $marker = 'C:\path\to\the-real-end-state'   # e.g. the copied file, or the tag t
 if (Test-Path -LiteralPath $marker) { Write-Output "Detected: $marker"; exit 0 }
 exit 0
 ```
-Prefer a real end-state file over a version tag so detection self-heals; use a tag only when there is no
-observable end-state.
+Prefer the **real end-state** (the file/registry value the fix establishes) as the marker, so detection
+self-heals AND a failed fix shows as "not installed" (-> retry, and visible in Intune). If you must use a tag,
+write it ONLY at the end of a SUCCESSFUL run - NEVER in a `finally` that also runs on a crash (that reports
+green on failure).
 
 ### K.6 Intune + ESP wiring
 - Install/Uninstall command: `Invoke-AppDeployToolkit.exe -DeploymentType Install|Uninstall -DeployMode Silent`;
   install behavior **System**; detection = the script rule (Run as 32-bit = No).
-- For ESP: assign **Required** and add it as a **blocking app** in the ESP profile. Always-exit-0 plus
-  self-healing detection keeps it from blocking enrollment.
+- For ESP: assign **Required**; add it as a **blocking app** ONLY if its success is genuinely a prerequisite for
+  the device. A blocking app that fails (non-zero OR negative detection) holds the OOBE - which is CORRECT for a
+  real malfunction. If a non-critical cleanup must never block enrollment, make that an explicit, documented
+  choice: either do NOT mark it blocking, or map its "couldn't-run" code as a success return code in Intune.
+  Never paper over failures with a blanket `exit 0`.
+
+### K.7 Exit codes + detection - the honest model (READ THIS)
+A blanket `exit 0` is a DEFECT: Intune then shows green even when the fix did nothing, and the only signal is the
+log. Decouple two concerns:
+
+- **Exit code = could the fix RUN?**
+  - Ran to completion (even with tolerable, logged per-item best-effort failures) -> `0`.
+  - Could NOT run / crashed (no admin, the 64-bit relaunch failed, enumeration threw, a required step failed) ->
+    **non-zero** (e.g. `1`). Surfaces as "failed" + retry. If you relaunch into 64-bit, **propagate the child's
+    exit code** (`& $ps64 ...; exit $LASTEXITCODE`) - do not hard-code `exit 0` in the launcher branch.
+- **Detection = is the real END-STATE present?** Point it at what the fix establishes (the copied file, the
+  registry value), NOT an unconditional tag. A failed fix -> end-state absent -> "not installed" -> retry, and
+  visible in Intune. If you use a tag, write it ONLY on a successful run (never in a `finally`).
+- **Log the truth regardless:** per-item PASS/FAIL + a final summary (failure count) under
+  `%ProgramData%\<App>\...log`, so a best-effort partial is auditable.
+
+Decision rule by package type:
+| Type | Exit code | Detection |
+|---|---|---|
+| Real installer (MSI/EXE) | map real codes: `0/1707` ok, `3010/1641` reboot, **else failed** - never force 0 | MSI ProductCode / file version |
+| Important fix (e.g. Cisco UI) | failure -> **non-zero** (Intune failed + retry) | the real end-state (e.g. the UI binary present) |
+| Non-critical ESP cleanup (debloat) | couldn't-run -> **non-zero**; best-effort partial -> `0` (logged) | real end-state, or a tag written ONLY on success |
+
+The "never block enrollment" goal is reached by the ESP assignment choice + return-code mapping (K.6), NOT by
+lying about the exit code.
 
 ---
 

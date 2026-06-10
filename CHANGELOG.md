@@ -2,6 +2,20 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.7.5 — 2026-06-10 — Honest exit codes + detection for fix/remediation packages
+
+### Fixed
+- **Removed the dangerous "always exit 0" guidance** from guide **Appendix K**. A blanket `exit 0` (and a
+  detection tag written in a `finally`) reports GREEN on failure — a real defect that hides broken deployments.
+  The recipe now teaches the honest model (new **K.7**):
+  - **Exit code = could the fix RUN?** Ran to completion -> `0`; couldn't run / crashed -> **non-zero**. The
+    64-bit relaunch now **propagates the child's exit code** (`exit $LASTEXITCODE`), never a hard-coded `0` (K.2).
+  - **Detection = the real END-STATE**, not an unconditional tag; if a tag is used, write it ONLY on a successful
+    run (never in a `finally`). A failed fix -> detection negative -> Intune retry + **visible** (K.5).
+  - Per-package decision table (real installer / important fix / non-critical ESP cleanup), and "never block
+    enrollment" reframed as an explicit ESP-assignment + return-code-mapping choice (K.6), not a masked exit code.
+- **SKILL.md** anti-pattern added: a blanket `exit 0` or a `finally`-written tag both report green on failure.
+
 ## 0.7.0 — 2026-06-10 — Value-adding extensions (pre-flight tool, recipes, knowledge)
 
 ### Added
