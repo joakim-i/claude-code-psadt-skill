@@ -65,6 +65,13 @@ param(
     [string]$DetectionScriptPath,
     [switch]$DetectionRunAs32Bit,
     [ValidateSet('x64','x86','arm64')][string]$Architecture = 'x64',
+    # minimumSupportedWindowsRelease: a Windows 10 release ID. These are the values the Graph backend reliably
+    # accepts (the canonical windowsMinimumOperatingSystem release tokens). Newer labels such as '21H2'/'22H2'
+    # are rejected by some tenant FE service versions ("Unknown MinimumSupportedWindowsRelease" -> BadRequest),
+    # so they are intentionally NOT offered here - the ValidateSet fails fast at param binding with the valid
+    # list instead of letting the upload die mid-flight at the create step. Need a newer minimum? Set it in the
+    # portal after upload. See guide Appendix H.
+    [ValidateSet('1607','1703','1709','1803','1809','1903','1909','2004')]
     [string]$MinWindowsRelease = '1607',
     [int]$MinFreeDiskSpaceMB = 0,
     [int]$MinMemoryMB = 0,

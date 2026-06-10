@@ -1216,6 +1216,9 @@ Uploading a new version must **not** remove the existing one. `Invoke-IntuneWin3
 ### H.10 Logo guard
 The Company-Portal logo must be the REAL application logo. The PSADT template's `Assets\AppIcon.png` (generic coloured ">" mark) is NOT it - re-using it is a real mistake that slipped past a naive "square + alpha" check. The script keeps a SHA256 blocklist of PSADT default assets and refuses them unless `-AllowDefaultLogo`. When verifying a downloaded logo, `IsAlphaPixelFormat` is True even for opaque images - sample a real corner pixel and visually confirm the brand. An opaque-but-correct logo is acceptable (square it on its own background colour); the WRONG image is not.
 
+### H.11 `minimumSupportedWindowsRelease` is a server-validated string - use a known-good release ID
+The win32LobApp `minimumSupportedWindowsRelease` property is a free-form **string**, but the backend validates it against an internal list and rejects anything unknown with `BadRequest: "Unknown MinimumSupportedWindowsRelease: <value>"` **at the create step** (after the app body is assembled - an ugly mid-flight failure). The reliably-accepted values are the canonical Windows 10 release IDs: `1607, 1703, 1709, 1803, 1809, 1903, 1909, 2004` (confirmed: `1809` accepted; `21H2` rejected on a live tenant). Newer labels (`21H2`, `22H2`, Windows 11 IDs) are accepted by some tenant FE-service versions and rejected by others, so `Invoke-IntuneWin32Upload.ps1` constrains `-MinWindowsRelease` to a `ValidateSet` of the reliable IDs - it fails fast at param binding with the valid list instead of dying at create. Need a higher minimum than `2004`? Set it in the portal after upload (App > Properties > Requirements). Note: this is a different field from the dossier's free-text "Minimum OS" display string, which may say e.g. "Windows 10 22H2" for humans.
+
 ---
 
 ## Appendix I: WinGet packaging (opt-in, never the default)
@@ -1547,3 +1550,131 @@ the natural detection rule.
 - EXE / other -> a **PowerShell detection script** (file version / registry value), OR an Intune **file/registry
   version rule**. Never mix a script rule and a file/registry rule for the same app.
 - Per-user installers (Squirrel) detect under `%LocalAppData%` - run detection in the right context.
+
+---
+
+## Appendix M: Group assignment (opt-in) - config-driven Entra groups + win32LobApp assignment
+
+Assignment is **opt-in** and resolved at intake Gate 2 (target audience + AAD groups). The default is **no
+assignment** - uploading an app NEVER auto-targets anyone. When the user does want the skill to manage the
+assignment groups, `Invoke-IntuneAppAssignment.ps1` creates/reuses Entra security groups by a configured naming
+scheme and assigns the uploaded `win32LobApp` to them (intents `required` / `available` / `uninstall`).
+Read-only dry run by default; `-Execute` writes. It is **idempotent** and **never deletes** a group or another
+app's assignment.
+
+### M.1 Permissions (least-privilege)
+The upload app (`PSADT Intune Upload`) needs two extra Graph **application** roles beyond the upload role:
+
+| Action | Role |
+|---|---|
+| upload + assign the app | `DeviceManagementApps.ReadWrite.All` (already required for upload) |
+| find a group by name | `GroupMember.Read.All` |
+| create a group the app then OWNS | `Group.Create` (NOT the tenant-wide `Group.ReadWrite.All`) |
+
+Grant them once (opt-in), needs Global Admin / Privileged Role Admin to consent:
+
+```
+pwsh scripts/New-PsadtEntraApp.ps1 -IncludeGroupManagement
+```
+
+This re-runs idempotently against the existing app and PATCHes its requested permissions. If consent is denied,
+the app + credential still exist and the run reports the pending roles to grant in the portal.
+
+### M.2 Config schema (`intune.groups`)
+The feature is off unless `intune.groups.enabled` is `true`. Schema:
+
+```
+intune.groups = {
+  enabled        = true            # master switch; off => the script throws "not enabled"
+  create         = true            # true: create a missing group; false: assign-to-existing-only (report MISSING)
+  membershipType = 'assigned'      # ONLY 'assigned' (static) is implemented; anything else throws
+  naming         = {               # at least one of required/available/uninstall must be present
+    required  = 'intune-win-app-required-%appname%'
+    available = 'intune-win-app-available-%appname%'
+    uninstall = 'intune-win-app-uninstall-%appname%'
+  }
+}
+```
+
+Write it with `Set-PsadtConfig.ps1` (dotted paths; the naming sub-tree is passed as one hashtable):
+
+```
+pwsh scripts/Set-PsadtConfig.ps1 -Updates @{
+  'intune.groups.enabled'        = $true
+  'intune.groups.create'         = $true
+  'intune.groups.membershipType' = 'assigned'
+  'intune.groups.naming'         = @{
+      required  = 'intune-win-app-required-%appname%'
+      available = 'intune-win-app-available-%appname%'
+      uninstall = 'intune-win-app-uninstall-%appname%'
+  }
+}
+```
+
+`Get-PsadtConfig.ps1` validates this: when `enabled` is true it reports `intune.groups.naming` as Missing if no
+template is present, or flags that at least one of required/available/uninstall is needed.
+
+### M.3 Naming tokens + the rules that bite
+`Resolve-GroupName` substitutes these tokens (case-insensitive; both `%token%` and `{Token}` forms work):
+
+| Token | Source |
+|---|---|
+| `%appname%` | the `-AppName` passed to the assignment script |
+| `%appvendor%` | the `-AppVendor` |
+| `%apparch%` | the `-AppArch` (default `x64`) |
+| `%version%` | the `-AppVersion` |
+
+Two rules that are easy to get wrong:
+
+- **There is NO `%intent%` token.** The intent (required/available/uninstall) is the *key* of the naming
+  template, not a substitution. To put the intent in the name, bake it into each template literally
+  (`intune-win-app-required-%appname%`, `...-available-...`, etc.). A `%intent%` placeholder would survive
+  verbatim into the group name.
+- **Group names contain NO spaces.** Every token value is space-stripped before substitution and the final name
+  is space-stripped as a safety net. So `-AppName 'Norton Neo'` yields `NortonNeo` in the name.
+
+**Version-independent by default (recommended).** Leave `%version%` OUT of the naming templates. Then a NEW app
+version resolves the SAME groups, so on the next upload you assign the new app + wire supersedence
+(`Invoke-IntuneWin32Upload.ps1 -SupersedesAppId <oldId>`) and the new version automatically targets the same
+audience while the old app is retained for rollback. This is the whole point of config-driven naming.
+
+**`%version%` opt-in (use deliberately).** Including `%version%` (e.g. `...-%appname%-%version%`) makes the group
+names **version-specific**: every version creates its own groups and you must re-add members for each release.
+This breaks the supersedence reuse above. Choose it only when you genuinely want per-version audiences.
+
+### M.4 Workflow
+Always dry-run first (read-only), confirm the planned group names + actions, then `-Execute`:
+
+```
+# dry run
+pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents required, available
+# execute
+pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents required, available -Execute
+```
+
+Per intent the script resolves the group by `displayName` (directory read uses `ConsistencyLevel: eventual`)
+and then:
+
+| Found | create | Action |
+|---|---|---|
+| exactly 1 | - | **reuse** that group |
+| 0 | true | **create** (assigned/static security group the app owns) |
+| 0 | false | **MISSING** - skip (create it manually or set `create=true`) |
+| >1 (name not unique) | - | **AMBIGUOUS** - skip, never guess |
+
+The assignment itself is idempotent: an existing assignment for the same group + intent is left untouched.
+`-Intents` defaults to every intent that has a naming template. Output is a structured object
+(`Groups[{Intent,Name,Id,Action}]`, `Assignments[{Intent,GroupId,Action}]`) - feed `Groups` into the dossier's
+Assignments table.
+
+### M.5 Gotchas
+- **`-SkillRoot` / config location.** The script reads config + acquires the token from `-SkillRoot` (default:
+  the script's parent). The `intune.groups` block, the `intune` credentials, and `secret.dpapi` must all live in
+  the SAME config the script resolves. The DPAPI secret is `CurrentUser`-bound per install, so the installed
+  skill's `config.json` is the canonical one - point `-SkillRoot` at it if you run the script from a clone.
+- **`membershipType` is `assigned` only.** Dynamic membership is not implemented; the script throws rather than
+  silently creating a static group when you asked for a rule.
+- **Never auto-impose.** Group assignment is only ever done when the user opted in at Gate 2 AND
+  `intune.groups.enabled` is true. No default audience, no implicit "All Users/All Devices".

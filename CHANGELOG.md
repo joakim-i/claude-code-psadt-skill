@@ -2,6 +2,35 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.8.0 — 2026-06-11 — Opt-in Entra group assignment (wired end-to-end) + min-OS upload fix
+
+### Added
+- **Group assignment as a first-class opt-in step (Phase 7.6).** `Invoke-IntuneAppAssignment.ps1` creates/reuses
+  Entra security groups by a configured naming scheme and assigns the uploaded `win32LobApp`
+  (intents required/available/uninstall). Read-only dry-run by default, `-Execute` writes; idempotent; never
+  deletes a group or another app's assignment; ambiguous/duplicate names are skipped, not guessed.
+- **`New-PsadtEntraApp.ps1 -IncludeGroupManagement`** consents the least-privilege group roles `Group.Create`
+  + `GroupMember.Read.All` (NOT tenant-wide `Group.ReadWrite.All`) on the existing upload app.
+- **`intune.groups` config schema** (`enabled`, `create`, `membershipType: assigned`,
+  `naming.{required|available|uninstall}`), validated by `Get-PsadtConfig.ps1`.
+- **Guide Appendix M** — the full feature reference: permission model, config schema + `Set-PsadtConfig`
+  snippet, naming tokens, the version-INDEPENDENT default (so a new version reuses the same groups for
+  supersedence) vs the `%version%` opt-in, the "no `%intent%` token" rule, dry-run -> execute workflow,
+  idempotency/ambiguous/missing handling, and `-SkillRoot`/config-location gotchas.
+
+### Fixed
+- **`Invoke-IntuneWin32Upload.ps1 -MinWindowsRelease` no longer dies mid-upload.** The Graph backend
+  validates `minimumSupportedWindowsRelease` as a server-side string and rejects unknown values
+  (`BadRequest: Unknown MinimumSupportedWindowsRelease`, e.g. `21H2`/`22H2`) only at the create step. The
+  parameter is now a `ValidateSet` of backend-accepted release IDs (`1607..2004`) that fails fast at param
+  binding with the valid list; set a higher minimum in the portal if needed. New guide note **H.11**.
+
+### Wiring
+- **SKILL.md** wired for the feature: Gate 2 ties "AAD groups" to the opt-in; Phase 0 mentions
+  `-IncludeGroupManagement`; new Phase 7.6; the "never auto-assign group" lines reframed as "only when the
+  user opted in at Gate 2 AND `intune.groups.enabled`"; anti-patterns for reflexive `%version%` and a
+  non-existent `%intent%` token; troubleshooting rows for the min-OS and group-permission errors.
+
 ## 0.7.5 — 2026-06-10 — Honest exit codes + detection for fix/remediation packages
 
 ### Fixed

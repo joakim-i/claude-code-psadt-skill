@@ -56,6 +56,11 @@ param(
     [ValidateRange(1, 24)][int]$SecretValidMonths = 12,
     [switch]$Force,
     [switch]$UseDeviceCode,
+    # Add the least-privilege group-management permissions (Group.Create + GroupMember.Read.All) so the app can
+    # find/create Entra groups for assignment (Invoke-IntuneAppAssignment.ps1). Off by default - opt in only when
+    # you want the skill to manage assignment groups. Group.Create lets the app create groups it then OWNS; it is
+    # NOT the tenant-wide Group.ReadWrite.All.
+    [switch]$IncludeGroupManagement,
     # Certificate-based auth (preferred over client secret): pass the thumbprint of a cert already in
     # Cert:\CurrentUser\My. The cert's public key is uploaded to the app; no client secret is created.
     [switch]$UseCertificate,
@@ -80,7 +85,8 @@ if ($UseCertificate) {
 $AppDisplayName = 'PSADT Intune Upload'                       # fixed by design
 $DeviceCodeClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'  # "Microsoft Graph Command Line Tools" (public)
 $GraphResourceAppId = '00000003-0000-0000-c000-000000000000'  # Microsoft Graph
-$RequiredAppRole = 'DeviceManagementApps.ReadWrite.All'
+$RequiredAppRoles = @('DeviceManagementApps.ReadWrite.All')
+if ($IncludeGroupManagement) { $RequiredAppRoles += @('Group.Create', 'GroupMember.Read.All') }
 $Scopes = 'Application.ReadWrite.All AppRoleAssignment.ReadWrite.All offline_access openid profile'
 $GraphBase = 'https://graph.microsoft.com/v1.0'
 
@@ -335,13 +341,16 @@ $H = @{ Authorization = "Bearer $($tok.access_token)" }
 Write-Ok "Signed in as $who"
 Write-Info "Tenant: $realTenant"
 
-# 2. Resolve the Microsoft Graph SP + the app-role id --------------------------------------------------
-Write-Step "Resolve Graph permission '$RequiredAppRole'"
+# 2. Resolve the Microsoft Graph SP + the app-role id(s) -----------------------------------------------
+Write-Step "Resolve Graph permission(s): $($RequiredAppRoles -join ', ')"
 $graphSp = (Invoke-Graph GET "$GraphBase/servicePrincipals?`$filter=appId eq '$GraphResourceAppId'" -Headers $H).value | Select-Object -First 1
 if (-not $graphSp) { throw "Could not find the Microsoft Graph service principal in this tenant." }
-$role = $graphSp.appRoles | Where-Object { $_.value -eq $RequiredAppRole -and $_.allowedMemberTypes -contains 'Application' } | Select-Object -First 1
-if (-not $role) { throw "App role '$RequiredAppRole' not found on the Graph service principal." }
-Write-Ok "Found app role id $($role.id)"
+$roles = foreach ($rv in $RequiredAppRoles) {
+    $r = $graphSp.appRoles | Where-Object { $_.value -eq $rv -and $_.allowedMemberTypes -contains 'Application' } | Select-Object -First 1
+    if (-not $r) { throw "App role '$rv' not found on the Graph service principal." }
+    $r
+}
+Write-Ok "Resolved $(@($roles).Count) app role(s)."
 
 # 3. Create (or reuse) the app registration ------------------------------------------------------------
 Write-Step "Create app registration '$AppDisplayName'"
@@ -354,13 +363,20 @@ if ($existing) {
     }
     $app = $existing
     Write-Ok "Reusing existing app (objectId $($app.id))"
+    if ($IncludeGroupManagement) {
+        # Reflect the (possibly newly added) group roles in the app's requested permissions too.
+        Invoke-WithRetry { Invoke-Graph PATCH "$GraphBase/applications/$($app.id)" -Headers $H -Body @{
+            requiredResourceAccess = @(@{ resourceAppId = $GraphResourceAppId; resourceAccess = @($roles | ForEach-Object { @{ id = $_.id; type = 'Role' } }) })
+        } } | Out-Null
+        Write-Ok "Updated requested permissions to include group management."
+    }
 } else {
     $appBody = @{
         displayName = $AppDisplayName
         signInAudience = 'AzureADMyOrg'
         requiredResourceAccess = @(@{
             resourceAppId  = $GraphResourceAppId
-            resourceAccess = @(@{ id = $role.id; type = 'Role' })
+            resourceAccess = @($roles | ForEach-Object { @{ id = $_.id; type = 'Role' } })
         })
     }
     $app = Invoke-Graph POST "$GraphBase/applications" -Body $appBody -Headers $H
@@ -391,36 +407,37 @@ if (-not $sp) {
     Write-Ok "Service principal exists ($($sp.id))"
 }
 
-# 5. Grant the application permission + admin consent --------------------------------------------------
-Write-Step "Grant '$RequiredAppRole' + admin consent"
-$consentGranted = $false
-$already = (Invoke-Graph GET "$GraphBase/servicePrincipals/$($sp.id)/appRoleAssignments" -Headers $H).value |
-    Where-Object { $_.appRoleId -eq $role.id -and $_.resourceId -eq $graphSp.id }
-if ($already) {
-    $consentGranted = $true
-    Write-Ok "Permission already granted."
-} else {
+# 5. Grant the application permission(s) + admin consent -----------------------------------------------
+Write-Step "Grant permission(s) + admin consent"
+$existingGrants = (Invoke-Graph GET "$GraphBase/servicePrincipals/$($sp.id)/appRoleAssignments" -Headers $H).value
+$pending = 0
+foreach ($r in $roles) {
+    $has = $existingGrants | Where-Object { $_.appRoleId -eq $r.id -and $_.resourceId -eq $graphSp.id }
+    if ($has) { Write-Ok "$($r.value): already granted."; continue }
     try {
         # Short retry: tolerate brief replication lag on the just-created SP, but surface a real
         # permission denial quickly instead of looping for half a minute.
         Invoke-WithRetry -Tries 3 -DelaySec 4 -Action {
             Invoke-Graph POST "$GraphBase/servicePrincipals/$($sp.id)/appRoleAssignments" -Headers $H -Body @{
-                principalId = $sp.id; resourceId = $graphSp.id; appRoleId = $role.id
+                principalId = $sp.id; resourceId = $graphSp.id; appRoleId = $r.id
             }
         } | Out-Null
-        $consentGranted = $true
-        Write-Ok "Permission granted and admin-consented."
+        Write-Ok "$($r.value): granted and admin-consented."
     } catch {
         $e = Get-GraphError $_
         if ($e.code -eq 'Authorization_RequestDenied') {
-            Write-Fail "Your account may not grant admin consent (need Global Admin or Privileged Role Admin)."
-            Write-Warn2 "The app and secret will still be created. Grant consent later in the portal:"
-            Write-Info  "Entra admin center > App registrations > '$AppDisplayName' > API permissions > Grant admin consent,"
-            Write-Info  "or follow references/app-registration.md."
+            $pending++
+            Write-Fail "$($r.value): cannot grant consent (need Global Admin or Privileged Role Admin)."
         } else {
             throw $e.message
         }
     }
+}
+$consentGranted = ($pending -eq 0)
+if ($pending -gt 0) {
+    Write-Warn2 "$pending permission(s) still need admin consent. The app and credential are created; grant later:"
+    Write-Info  "Entra admin center > App registrations > '$AppDisplayName' > API permissions > Grant admin consent,"
+    Write-Info  "or follow references/app-registration.md."
 }
 
 # 6. Credential: certificate (preferred) or client secret ----------------------------------------------
@@ -463,7 +480,7 @@ Write-Host "`n----------------------------------------------------------------" 
 Write-Host "Done. Direct Intune upload is configured." -ForegroundColor Green
 Write-Host "  Tenant    : $realTenant"
 Write-Host "  Client    : $($app.appId)   ('$AppDisplayName')"
-Write-Host "  Permission: $RequiredAppRole  (consent: $(if($consentGranted){'granted'}else{'PENDING - grant in portal'}))"
+Write-Host "  Permissions: $($RequiredAppRoles -join ', ')  (consent: $(if($consentGranted){'granted'}else{'PENDING - grant in portal'}))"
 if ($UseCertificate) {
     Write-Host "  Auth      : certificate ($CertThumbprint), expires $($credExpires.ToString('yyyy-MM-dd'))" -ForegroundColor Cyan
 } else {
