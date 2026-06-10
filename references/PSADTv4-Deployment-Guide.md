@@ -176,24 +176,16 @@ New-ADTTemplate -Destination '<RootFolder>' -Name '<AppName>'
 # e.g. New-ADTTemplate -Destination '<paths.packageRoot from config>' -Name 'FooBar 10'
 ```
 
-Creates `<RootFolder>\<AppName>\` with the complete v4 structure. The default is `-Version 4` (current v4 style). `-Version 3` gives the v3 compatibility template (you no longer need that in 2026).
+Creates `<RootFolder>\<AppName>\` with the complete v4 structure. `New-ADTTemplate` in v4.1.x takes ONLY
+`-Destination` / `-Name` / `-Version` / `-Force` / `-Show` / `-PassThru` — it does NOT accept app-metadata
+parameters. The default is `-Version 4` (current v4 style); `-Version 3` gives the v3 compatibility template
+(you no longer need that in 2026).
 
-**Extended scaffold (pre-populated with app metadata, values from Phase 0.2):**
-```powershell
-New-ADTTemplate -Destination '<RootFolder>' `
-    -Name '<AppName>' `
-    -AppVendor '<Vendor>' `
-    -AppName '<ProductShortName>' `
-    -AppVersion '<Major.Minor.Build.Rev>' `
-    -AppArch '<x64|x86|ARM64>' `
-    -AppLang '<EN|DE|Multi>' `
-    -AppRevision '<01>' `
-    -AppSuccessExitCodes @(<0>, <1707>) `
-    -AppRebootExitCodes @(<1641>, <3010>) `
-    -AppScriptAuthor '<FirstName LastName>'
-```
-
-The values land directly as `$adtSession = @{...}` in the generated `Invoke-AppDeployToolkit.ps1`. Less manual editing = fewer typos.
+**App metadata is NOT a `New-ADTTemplate` parameter** — do not pass `-AppVendor/-AppName/-AppVersion/-AppArch/...`
+(v4.1.x throws "A parameter cannot be found that matches parameter name 'AppVendor'"). Instead, after scaffolding,
+fill the metadata directly in the generated `Invoke-AppDeployToolkit.ps1`'s `$adtSession = @{ ... }` hashtable
+(AppVendor / AppName / AppVersion / AppArch / AppLang / AppRevision / AppSuccessExitCodes / AppRebootExitCodes /
+`AppScriptVersion = '0.1'` / AppScriptAuthor from config) plus the `.NOTES` changelog. See Phase 1 field details below.
 
 > The `Adobe Acrobat Pro` and `Oracle XE` references further down in this document are illustration only - for every new package the app TO BE PACKAGED is inserted here, not Adobe or Oracle.
 
