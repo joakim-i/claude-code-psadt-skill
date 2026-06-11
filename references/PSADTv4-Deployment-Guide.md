@@ -2,21 +2,25 @@
 
 Mandatory end-to-end guide for Intune Win32 packages with PSADT 4.x. Work through it in this order. Do not skip any phases.
 
-- **Phase 0**: Research + Intake (BEFORE the first click)
-- **Phase 1**: Scaffold via `New-ADTTemplate`
-- **Phase 2**: Script customizing
-- **Phase 3**: Pre-flight checks (encoding, parse, launcher simulation)
-- **Phase 4**: Build the .intunewin
-- **Phase 5**: Intune app configuration
-- **Phase 6**: Test sequence
-- **Phase 7**: Rollout
-- **Appendices**: A Error Reference / B Anti-Patterns / C Stub Tricks / D Resources / E Final Checklist / F Intune Upload Dossier / G Lessons Learned
+- **Phase 0**: Setup (config bootstrap - see SKILL.md / `Get-PsadtConfig`)
+- **Phases 1-2**: Intake + Research (BEFORE the first click)
+- **Phase 3**: Scaffold via `New-ADTTemplate`
+- **Phase 4**: Script customizing (the three hooks)
+- **Phase 5**: Pre-flight checks (encoding, parse, launcher simulation)
+- **Phase 6**: SYSTEM test (opt-in; binding gate for upload - Appendix A / G)
+- **Phase 7**: Build the .intunewin
+- **Phase 8**: Intune app configuration (+ dossier, Appendix F)
+- **Phase 9**: Direct Graph upload (opt-in; Appendix H)
+- **Phase 10**: Group assignment (opt-in; Appendix M)
+- **Phase 11**: Test sequence
+- **Phase 12**: Rollout
+- **Appendices**: A Error reference / B Anti-patterns / C Test stub pattern / D Resources / E Final deploy checklist / F Package report (dossier + technical) / G Lessons learned / H Direct Intune upload (Graph) / I WinGet packaging / J App logo / K Script-only / remediation packages / L Installer technologies + silent switches / M Group assignment
 
 ---
 
-## Phase 0: Research + Intake (DO NOT skip)
+## Phase 1-2: Research + Intake (DO NOT skip)
 
-### 0.1 Check the current PSADT version
+### 1.1 Check the current PSADT version
 
 Before any package is built: is the local PSADT module still up to date? Breaking changes between minor versions do happen (4.0.x -> 4.1.x parameter renames).
 
@@ -46,7 +50,7 @@ $rel.body -split "`n" | Select-Object -First 40   # Changelog excerpt
 
 The module version in the package `<pkg>\PSAppDeployToolkit\PSAppDeployToolkit.psd1` `ModuleVersion = '<VER>'` must exactly match what the script declares in `$adtSession.DeployAppScriptVersion = '<VER>'` AND the `Invoke-AppDeployToolkit.exe` build version (right-click properties, details).
 
-### 0.2 Intake questions about the app (before a single line of code exists)
+### 1.2 Intake questions about the app (before a single line of code exists)
 
 Without answers to these points the package will be junk. Clarify with the stakeholder / user:
 
@@ -103,7 +107,7 @@ Without answers to these points the package will be junk. Clarify with the stake
 
 Use this list as an intake form; whatever stays open = risk in the deployment.
 
-### 0.3 Web research on the specific installer
+### 1.3 Web research on the specific installer
 
 Research per app - without these answers there is no successful silent install:
 
@@ -154,11 +158,11 @@ Without this table filled in: **do not package**.
 
 ---
 
-## Phase 1: Scaffold via `New-ADTTemplate`
+## Phase 3: Scaffold via `New-ADTTemplate`
 
 Do not create folders manually. The official cmdlet builds the correct structure.
 
-### 1.1 Load the module, generate the scaffold
+### 3.1 Load the module, generate the scaffold
 
 ```powershell
 # One-time - or when the installed version is outdated
@@ -168,7 +172,7 @@ Install-Module PSAppDeployToolkit -Scope CurrentUser -Force
 Import-Module PSAppDeployToolkit
 ```
 
-The values come from the intake in Phase 0.2 - replace `<...>` with the ACTUAL values of the app currently being packaged.
+The values come from the intake in Phase 1.2 - replace `<...>` with the ACTUAL values of the app currently being packaged.
 
 **Basic scaffold (only destination + name):**
 ```powershell
@@ -185,11 +189,11 @@ parameters. The default is `-Version 4` (current v4 style); `-Version 3` gives t
 (v4.1.x throws "A parameter cannot be found that matches parameter name 'AppVendor'"). Instead, after scaffolding,
 fill the metadata directly in the generated `Invoke-AppDeployToolkit.ps1`'s `$adtSession = @{ ... }` hashtable
 (AppVendor / AppName / AppVersion / AppArch / AppLang / AppRevision / AppSuccessExitCodes / AppRebootExitCodes /
-`AppScriptVersion = '0.1'` / AppScriptAuthor from config) plus the `.NOTES` changelog. See Phase 1 field details below.
+`AppScriptVersion = '0.1'` / AppScriptAuthor from config) plus the `.NOTES` changelog. See Phase 3 field details below.
 
 > The `Adobe Acrobat Pro` and `Oracle XE` references further down in this document are illustration only - for every new package the app TO BE PACKAGED is inserted here, not Adobe or Oracle.
 
-### 1.2 What the scaffold produces
+### 3.2 What the scaffold produces
 
 ```
 <Destination>\<Name>\
@@ -204,7 +208,7 @@ fill the metadata directly in the generated `Invoke-AppDeployToolkit.ps1`'s `$ad
   Strings\                             # Localization overrides (optional)
 ```
 
-### 1.3 First verification of the scaffold
+### 3.3 First verification of the scaffold
 
 ```powershell
 $pkg = '<scaffold path>'   # e.g. '<paths.packageRoot from config>\<AppName>'
@@ -218,9 +222,9 @@ Both must match (typically `4.1.8`). If they diverge -> reinstall the module + s
 
 ---
 
-## Phase 2: Script customizing
+## Phase 4: Script customizing
 
-### 2.1 Put the installer in `Files\`
+### 4.1 Put the installer in `Files\`
 
 Everything that is `setup.exe`, `*.msi`, `*.mst`, response files, runtime assets lands under `<pkg>\Files\`.
 In the script then use `$adtSession.DirFiles` as the root.
@@ -229,7 +233,7 @@ In the script then use `$adtSession.DirFiles` as the root.
 > (consult it BEFORE web-searching). For a *script-only* fix/remediation/debloat package (no vendor installer),
 > follow **Appendix K** instead.
 
-### 2.2 Finalize the `$adtSession` metadata
+### 4.2 Finalize the `$adtSession` metadata
 
 In `Invoke-AppDeployToolkit.ps1` check the hashtable (see 0.2 Intake for the values):
 
@@ -243,10 +247,10 @@ $adtSession = @{
     AppRevision                 = '<01>'
     AppSuccessExitCodes         = @(0, 1707)                           # add installer-specific codes
     AppRebootExitCodes          = @(1641, 3010)
-    AppProcessesToClose         = @('<process1>', '<process2>')        # names without .exe; from Phase 0.2
-    AppScriptVersion            = '<1.0.0>'
+    AppProcessesToClose         = @('<process1>', '<process2>')        # names without .exe; from Phase 1.2
+    AppScriptVersion            = '0.1'                                # ALWAYS start at 0.1 (never 1.0.0); bump with the .NOTES changelog
     AppScriptDate               = '<YYYY-MM-DD>'
-    AppScriptAuthor             = '<FirstName LastName>'
+    AppScriptAuthor             = '<author.person>, <author.company>'  # from config (Get-PsadtConfig), never hard-coded
     RequireAdmin                = $true
     InstallName                 = ''
     InstallTitle                = ''
@@ -256,7 +260,7 @@ $adtSession = @{
 }
 ```
 
-### 2.3 Fill the Install/Uninstall/Repair hooks
+### 4.3 Fill the Install/Uninstall/Repair hooks
 
 The scaffold has three empty functions: `Install-ADTDeployment`, `Uninstall-ADTDeployment`, `Repair-ADTDeployment`. Each has Pre/Install/Post MARK sections.
 
@@ -282,7 +286,7 @@ Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList '/s
 
 Always pass `-SuccessExitCodes` - otherwise Start-ADTProcess throws on anything != 0.
 
-### 2.4 Extensions module for helper functions
+### 4.4 Extensions module for helper functions
 
 Custom helpers belong in `<pkg>\PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1` - NOT directly in the main script. Reasons: reuse, clean namespaces, the main script stays readable.
 
@@ -297,7 +301,7 @@ The main script loads the extensions automatically (the block `Get-ChildItem ...
 
 ---
 
-## Phase 3: Pre-flight checks
+## Phase 5: Pre-flight checks
 
 Run everything in this phase. Each failure = DO NOT continue.
 
@@ -305,7 +309,7 @@ Run everything in this phase. Each failure = DO NOT continue.
 > returns `{ Overall = 'GREEN'|'RED'; Checks = ... }` (GREEN required to proceed). The sub-sections below
 > explain each check so you can diagnose a RED; the script is the gate, this is the reference.
 
-### 3.1 Encoding check (UTF-8 with BOM or ASCII-only)
+### 5.1 Encoding check (UTF-8 with BOM or ASCII-only)
 
 PowerShell 5.1 reads a .ps1 without a BOM as Windows-1252. UTF-8 multibytes (em-dash `—`, arrow `→`, umlauts, typographic quotes, ellipsis `…`) fall apart. In double-quoted strings a misinterpreted em-dash **closes** the string prematurely (UTF-8 `E2 80 94` -> CP1252 `â€"`, last byte = `"`). Parse error. The script NEVER runs. Intune shows `0x80070001`, no local logs.
 
@@ -334,7 +338,7 @@ $text = $text -replace [char]0x2026, '...'    # ellipsis
 [System.IO.File]::WriteAllText($s, $text, [System.Text.UTF8Encoding]::new($true))
 ```
 
-### 3.2 Parse check
+### 5.2 Parse check
 
 ```powershell
 $errs = $null
@@ -344,7 +348,7 @@ if ($errs) { $errs | Select Message,@{N='L';E={$_.Extent.StartLineNumber}} } els
 
 IMPORTANT: `Parser::ParseFile` detects UTF-8-without-BOM correctly and often reports `PARSE_OK` even though powershell.exe via the launcher still blows up. The 3.3 test is the REAL gate.
 
-### 3.3 Launcher simulation (acid test)
+### 5.3 Launcher simulation (acid test)
 
 The `Invoke-AppDeployToolkit.exe` launcher calls PS5.1 with `-Command "try { & 'script.ps1' ... } catch { throw }; exit $Global:LASTEXITCODE"`. Replicate exactly that:
 
@@ -360,7 +364,7 @@ Parse errors in stderr despite a green 3.2 = encoding bug, back to 3.1.
 
 For scripts that trigger real installers: stub the Install-ADTDeployment body (see Appendix C).
 
-### 3.4 Param block vs. v4 template
+### 5.4 Param block vs. v4 template
 
 The param block in the main script must match `<pkg>\PSAppDeployToolkit\Frontend\v4\Invoke-AppDeployToolkit.ps1`. As of 4.1.8:
 
@@ -377,7 +381,7 @@ param (
 
 NOT: `$AllowRebootPassThru` (v3 thinking). Append your own parameters (e.g. `$DbPassword`) at the end, and remove them from `$iadtParams` BEFORE `Open-ADTSession`.
 
-### 3.5 Leftover v3 cmdlets
+### 5.5 Leftover v3 cmdlets
 
 Forbidden in the code:
 
@@ -405,7 +409,7 @@ $t = [System.IO.File]::ReadAllText($s)
 foreach ($fn in $v3) { $m = [regex]::Matches($t, "\b$fn\b"); if ($m.Count) { "V3_FOUND: $fn ($($m.Count)x)" } }
 ```
 
-### 3.6 Top-level statements outside try/catch
+### 5.6 Top-level statements outside try/catch
 
 Anything that is NOT inside a try/catch and throws = exit 1 = no log. At top level only the following are allowed: attributes, the param block, simple `$var = @{...}`, preference variables, `Set-StrictMode`, `try/catch`.
 
@@ -419,9 +423,9 @@ Anything that is not an `AssignmentStatementAst` / `PipelineAst` (for Set-Strict
 
 ---
 
-## Phase 4: Build the .intunewin
+## Phase 7: Build the .intunewin
 
-### 4.1 Get IntuneWinAppUtil
+### 7.1 Get IntuneWinAppUtil
 
 Microsoft's official packaging tool. Always the current version:
 - GitHub: https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool
@@ -438,7 +442,7 @@ if (-not (Test-Path $tool)) {
 & $tool -v
 ```
 
-### 4.2 Package
+### 7.2 Package
 
 ```powershell
 $src = '<package folder from phase 1>'              # e.g. '<paths.packageRoot>\<AppName>'
@@ -466,7 +470,7 @@ $iw = Get-ChildItem "$out\*.intunewin" | Select-Object -First 1
 
 Drastically larger than Files + 20-50 MB toolkit = nested .intunewin, `-o` was inside `-c`, repackage with an external output.
 
-### 4.3 Check extractability (offline)
+### 7.3 Check extractability (offline)
 
 The .intunewin is an AES-encrypted ZIP. Not extractable without Intune, but the outer ZIP has a metadata XML that is accessible unencrypted:
 
@@ -479,15 +483,15 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
 
 ---
 
-## Phase 5: Intune app configuration
+## Phase 8: Intune app configuration
 
-### 5.1 App Information
+### 8.1 App Information
 - Name / Version / Publisher: matches `$adtSession.AppName / AppVersion / AppVendor`
 - Description: Markdown-capable, the first paragraph readable standalone (~200 characters are the short preview in the Company Portal)
 - Category: choose it semantically correct (Development, Productivity, ...)
 - Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=256x256 PNG
 
-### 5.2 Program
+### 8.2 Program
 - **Install command**: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`
 - **Uninstall command**: `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` (case does not matter, the ValidateSet is case-insensitive)
 - **Install behavior**: `System` (default; the SYSTEM context is correct for Win32 apps)
@@ -496,7 +500,7 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
   - `Determine behavior based on return codes` - default, falls back to the return-code mapping
 - **Allow available uninstall**: Yes (lets the user uninstall via the Company Portal)
 
-### 5.3 Return codes (critical, never omit)
+### 8.3 Return codes (critical, never omit)
 
 Mandatory mapping, otherwise Intune shows unknown exit codes as `0x80070000 + code`:
 
@@ -512,14 +516,14 @@ Mandatory mapping, otherwise Intune shows unknown exit codes as `0x80070000 + co
 
 Additionally enter the installer-specific codes from 0.3.
 
-### 5.4 Requirements
+### 8.4 Requirements
 - **OS architecture**: `x64` when the script has `AppArch='x64'`, otherwise accordingly
 - **Minimum OS**: realistic (Win11 22H2, Win10 22H2) - not `1607`, that is leaving it open to legacy
 - **Disk space**: when the installer needs a lot - saves time on small disks
 - **Physical memory**: only for genuinely memory-hungry installers
 - **Additional requirement rules**: Registry / File / Script - for everything that goes beyond the standard requirements (e.g. domain-join check, specific build number)
 
-### 5.5 Detection rules
+### 8.5 Detection rules
 
 Three options, ordered by robustness:
 
@@ -534,12 +538,12 @@ Three options, ordered by robustness:
 
 **Mandatory**: the detection method is **unambiguous** - not a custom script PLUS a file rule; that gives contradictory answers.
 
-### 5.6 Install time required
+### 8.6 Install time required
 - The default of 60 min is enough for most installers
 - Only when documented >45 min, raise it
 - Don't reflexively set 120 min ("more is better" is not true here - Intune then keeps the process alive extremely long)
 
-### 5.7 Assignments
+### 8.7 Assignments
 - `Required` for a mandatory rollout to a device or user group
 - `Available for enrolled devices` for self-service via the Company Portal
 - `Uninstall` as a pseudo-assignment to deliberately remove apps again
@@ -550,32 +554,32 @@ Three options, ordered by robustness:
 
 ---
 
-## Phase 6: Test sequence
+## Phase 11: Test sequence
 
 In this order on a DEV VM (not prod).
 
-### 6.1 Direct invoke (smoke test)
+### 11.1 Direct invoke (smoke test)
 ```powershell
 .\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent
 ```
 Runs through = script logic OK.
 Does not run through = your code bug, not an Intune problem.
 
-### 6.2 Launcher invoke (acid test)
+### 11.2 Launcher invoke (acid test)
 ```powershell
 .\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 ```
 Runs through = encoding / param-block sync OK.
 Does not run through but 6.1 does = see 3.1 (encoding), 3.4 (params), 3.6 (top-level throws).
 
-### 6.3 SYSTEM context (IME reality)
+### 11.3 SYSTEM context (IME reality)
 ```cmd
 psexec -s -accepteula cmd /c "cd /d <pkg> && Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent"
 ```
 PsExec: https://learn.microsoft.com/en-us/sysinternals/downloads/psexec
 Runs through = no dependency on a user session. This test must be green BEFORE upload.
 
-### 6.4 Test-group deploy
+### 11.4 Test-group deploy
 A dedicated Intune test group with 1 VM. Observe the deployment:
 - `C:\Windows\Logs\Software\*PSAppDeployToolkit_Install.log` must exist + contain `Close-ADTSession` with Exit 0
 - `AppWorkload.log` shows `Status: Installed`
@@ -585,21 +589,21 @@ Only after success: production rollout.
 
 ---
 
-## Phase 7: Rollout
+## Phase 12: Rollout
 
-### 7.1 Staged rollout
+### 12.1 Staged rollout
 - Run a pilot group (10-50 devices) for 24-48h
 - Monitoring: Intune Admin Center -> Apps -> Oracle (example) -> Device install status
 - At >5% failure rate: pause the rollout, find the cause
 
-### 7.2 Production
+### 12.2 Production
 - Expand the target audiences after pilot success
 - Review the Company Portal description + support notes
 - Known issues into the internal knowledge base
 
-### 7.3 Ongoing
+### 12.3 Ongoing
 - Subscribe to the GitHub release feed (Releases -> Watch -> Releases only) so you don't miss PSADT updates
-- Check with every new package: is the module in the scaffold still up to date (Phase 0.1)
+- Check with every new package: is the module in the scaffold still up to date (Phase 1.1)
 
 ---
 
@@ -710,7 +714,7 @@ AppWorkload.log sequence:
 | 70000-79999 | Your own custom codes (Extensions module) | same |
 
 **Map `1603, 1619, 60001, 60008` as `failed`** return codes in Intune so a real failure surfaces (instead of
-"unknown exit code"); map `0 / 1707` success and `3010 / 1641` reboot. See Phase 5 / the upload `returnCodes`.
+"unknown exit code"); map `0 / 1707` success and `3010 / 1641` reboot. See Phase 8 / the upload `returnCodes`.
 
 ---
 
@@ -727,7 +731,7 @@ AppWorkload.log sequence:
 9. **Mixed detection** (custom script + file rule in parallel).
 10. **Extensions in the main script instead of in `PSAppDeployToolkit.Extensions`**.
 11. **-o inside -c with IntuneWinAppUtil** - nested .intunewin.
-12. **No stakeholder intake (Phase 0.2)** - the most common reason for "the installer doesn't do what I want" after 2 weeks.
+12. **No stakeholder intake (Phase 1.2)** - the most common reason for "the installer doesn't do what I want" after 2 weeks.
 
 ---
 
@@ -803,23 +807,23 @@ Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 ## Appendix E: Final deploy checklist
 
 ```
-Phase 0 - Research + Intake
+Phase 1-2 - Research + Intake
 [ ] 0.1  PSADT version local == Latest (or update)
 [ ] 0.2  Intake form complete (App, Installer, Environment, Sec)
 [ ] 0.3  Silent install switches + uninstall switches documented
 
-Phase 1 - Scaffold
+Phase 3 - Scaffold
 [ ] 1.1  New-ADTTemplate -Destination ... -Name ... executed
 [ ] 1.2  Folder layout complete
 [ ] 1.3  Module version pinned in scaffold
 
-Phase 2 - Script customizing
+Phase 4 - Script customizing
 [ ] 2.1  Installer in Files\
 [ ] 2.2  $adtSession with all metadata
 [ ] 2.3  Install/Uninstall/Repair hooks filled in
 [ ] 2.4  Custom helpers in PSAppDeployToolkit.Extensions, not in the main script
 
-Phase 3 - Pre-Flight
+Phase 5 - Pre-Flight
 [ ] 3.1  Encoding: HasBOM=True OR NonAscii=0
 [ ] 3.2  ParseFile PARSE_OK
 [ ] 3.3  Launcher simulation green
@@ -827,12 +831,12 @@ Phase 3 - Pre-Flight
 [ ] 3.5  No v3 cmdlet remnants
 [ ] 3.6  No top-level statements that can throw
 
-Phase 4 - Build
+Phase 7 - Build
 [ ] 4.1  IntuneWinAppUtil latest
 [ ] 4.2  -c / -s / -o correct, -o NOT inside -c
 [ ] 4.3  Inspection: Detection.xml has SetupFile=Invoke-AppDeployToolkit.exe
 
-Phase 5 - Intune config
+Phase 8 - Intune config
 [ ] 5.1  App Info + Logo
 [ ] 5.2  Install/Uninstall command + Install Behavior=System
 [ ] 5.3  Return codes complete (incl. 60001+60008=Failed)
@@ -841,13 +845,13 @@ Phase 5 - Intune config
 [ ] 5.6  Install time realistic
 [ ] 5.7  Assignments + Filter + Delivery Opt
 
-Phase 6 - Test
+Phase 11 - Test
 [ ] 6.1  Direct invoke on DEV
 [ ] 6.2  Launcher invoke on DEV
 [ ] 6.3  Psexec -s on DEV
 [ ] 6.4  Test-group deploy -> PSADT log + Close-ADTSession Exit 0
 
-Phase 7 - Rollout
+Phase 12 - Rollout
 [ ] 7.1  Pilot (24-48h)
 [ ] 7.2  Production staged
 [ ] 7.3  GitHub release watch subscribed
@@ -863,10 +867,10 @@ Only when ALL lines are green: production rollout.
 template `references/Report-Template.html`. Do NOT hand-assemble the HTML.** Output is always
 `Intune-Dossier.html` in `Output\<App>\`. It is one self-contained, **bilingual (DE/EN toggle)** document:
 part 1 is the Intune dossier (the tables F.1–F.9 below), part 2 is the technical package report (deployment
-hooks, PSADT cmdlets used, pre-flight results, the Phase 5.5 SYSTEM-test result, logo + `.intunewin`
+hooks, PSADT cmdlets used, pre-flight results, the Phase 6 SYSTEM-test result, logo + `.intunewin`
 verification). The logo is embedded as a base64 data URI; the description **preview is rendered client-side
 from its Markdown source**. **Exception:** the F.2 description block is **Markdown**, because the Intune app
-description field supports only Markdown (not HTML). The values come from Phase 0.2/0.3 and the test phases.
+description field supports only Markdown (not HTML). The values come from Phase 1.2/1.3 and the test phases.
 
 ### F.0 Generator usage + `-Metadata` keys
 
@@ -906,7 +910,7 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 |---|---|---|
 | **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
 | **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
-| **Publisher** | `<Vendor>` | from Phase 0.2 (Adobe Inc., Oracle Corporation, ...) |
+| **Publisher** | `<Vendor>` | from Phase 1.2 (Adobe Inc., Oracle Corporation, ...) |
 | **App version** | `<Major.Minor.Build.Rev>` | exact file version |
 | **Category** | e.g. Business, Development, Productivity, Communication | for CP navigation |
 | **Show this as a featured app in the Company Portal** | Yes/No | Yes only for recommended self-service apps |
@@ -983,7 +987,7 @@ Check: the first paragraph must also be readable on its own (200-character short
 | `<installer-success-nicht-0>` | Success |
 | `<installer-known-error>` | Failed |
 
-Add the installer-specific codes from Phase 0.3. Every unknown exit code produces `0x80070000+code` in the error display.
+Add the installer-specific codes from Phase 1.3. Every unknown exit code produces `0x80070000+code` in the error display.
 
 ### F.5 Requirements
 
@@ -1139,7 +1143,7 @@ These lessons come from concrete packaging projects and apply to PSADT v4 Intune
 
 1. **SYSTEM test loop dies under PowerShell 7 - `New-ScheduledJobOption` / PSScheduledJob cannot load**: running `Invoke-PsadtSystemTest.ps1` (which calls `Invoke-CommandAs -AsSystem`) from **pwsh 7** failed on every action with `The 'New-ScheduledJobOption' command was found in the module 'PSScheduledJob', but the module could not be loaded`. The launcher never actually ran as SYSTEM, so every step came back `ExitCode=0 Success=False Detection=not-installed` (deceptive: exit 0 but nothing happened). **Cause**: `Invoke-CommandAs -AsSystem` schedules its work via the **`PSScheduledJob`** module (`New-ScheduledJobOption`, `Register-ScheduledJob`). `PSScheduledJob` is a **Windows PowerShell 5.1-only** module and is **blocked** from loading under PowerShell 7 (Core) by the `WindowsPowerShellCompatibilityModuleDenyList`. Under WinPS 5.1 the same calls work natively. (Tell-tale: PS7 renders errors in ConciseView with `Line |` + `~~~~` underlines; WinPS 5.1 uses the older NormalView - the error format alone reveals which host you are in.) **Fix**: `Invoke-PsadtSystemTest.ps1` now detects `$PSVersionTable.PSEdition -eq 'Core'` and transparently **re-execs itself under `...\WindowsPowerShell\v1.0\powershell.exe` (5.1)**, marshalling the structured result back via a temp JSON file (UTF-8 **no BOM**, so `ConvertFrom-Json` reads it cleanly). **General lesson**: any helper that relies on `Invoke-CommandAs`/`PSScheduledJob`/`Register-ScheduledJob` (scheduled-job-backed "run as SYSTEM" tricks) is **WinPS-5.1-only** - never assume it works in pwsh 7. Either force the 5.1 host or use a native `Register-ScheduledTask` (CIM) SYSTEM principal. Gotcha when re-execing via `powershell.exe -File`: **`[int[]]` array parameters do NOT bind** (only the first value binds, the rest become stray positional args -> "no positional parameter accepts ...") - marshal arrays as a CSV string and split inside the child.
 
-2. **`Start-ADTMsiProcess -Action Uninstall -FilePath '{GUID}'` -> exit 60001 (`InvalidFilePathParameterValue`)**: once the SYSTEM loop actually ran, Install was green but Uninstall failed with `FullyQualifiedErrorId : InvalidFilePathParameterValue,Start-ADTMsiProcess` (exit 60001, app stayed installed). **Cause**: in **PSADT 4.1.x** `Start-ADTMsiProcess` split the target into two parameters - `-FilePath` is now validated as a **real .msi file path**, and a **ProductCode GUID must be passed via the dedicated `-ProductCode` parameter**. Older v4.0 patterns (and earlier versions of this skill's own examples) used `-FilePath '{<ProductCode>}'`, which now throws. **Fix**: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<GUID>}'` (same for `-Action Repair`). **General lesson**: this is exactly the "newer PSADT version changed a command" trap from Phase 2 - verify cmdlet parameters against the **installed** module (`(Get-Command Start-ADTMsiProcess).Parameters.Keys`) instead of trusting a remembered pattern; `-ProductCode` for GUIDs, `-FilePath` for actual files.
+2. **`Start-ADTMsiProcess -Action Uninstall -FilePath '{GUID}'` -> exit 60001 (`InvalidFilePathParameterValue`)**: once the SYSTEM loop actually ran, Install was green but Uninstall failed with `FullyQualifiedErrorId : InvalidFilePathParameterValue,Start-ADTMsiProcess` (exit 60001, app stayed installed). **Cause**: in **PSADT 4.1.x** `Start-ADTMsiProcess` split the target into two parameters - `-FilePath` is now validated as a **real .msi file path**, and a **ProductCode GUID must be passed via the dedicated `-ProductCode` parameter**. Older v4.0 patterns (and earlier versions of this skill's own examples) used `-FilePath '{<ProductCode>}'`, which now throws. **Fix**: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<GUID>}'` (same for `-Action Repair`). **General lesson**: this is exactly the "newer PSADT version changed a command" trap from Phase 4 - verify cmdlet parameters against the **installed** module (`(Get-Command Start-ADTMsiProcess).Parameters.Keys`) instead of trusting a remembered pattern; `-ProductCode` for GUIDs, `-FilePath` for actual files.
 
 ---
 
@@ -1152,7 +1156,7 @@ Captured 2026-06-06 while implementing `scripts/Get-GraphToken.ps1` + `scripts/I
 - **Uploads use app-only client credentials** (`Get-GraphToken.ps1`): scope `https://graph.microsoft.com/.default`, the DPAPI secret decrypted **in-memory only** (`SecureStringToBSTR` -> `PtrToStringBSTR` -> `ZeroFreeBSTR`), never logged.
 
 ### H.1 Use `/beta`, not `/v1.0`
-The current Intune app-metadata backend (`StatelessAppMetadataFEService`, api-version 2025-07-02) on `/v1.0` **silently drops several win32LobApp write properties** - most visibly `displayVersion` (the portal "App Version" stays empty even after a PATCH that returns 200). The **same call on `/beta` persists them**. Do all win32LobApp metadata writes on `/beta`.
+The current Intune app-metadata backend (`StatelessAppMetadataFEService`, api-version 2025-07-02) on `/v1.0` **silently drops several win32LobApp write properties** - most visibly `displayVersion` (the portal "App Version" stays empty even after a PATCH that returns 200). The **same call on `/beta` persists them**. Do all win32LobApp metadata writes on `/beta`. **Drift caveat:** `/beta` is explicitly unversioned, so Microsoft can change the win32LobApp request shapes (the `@odata.type`-first / unified `rules` / detection-rule allowed-properties rules below) with no notice. This is a knowing trade-off for `displayVersion`; the upload-shape unit tests (`tests/Invoke-IntuneWin32Upload.Tests.ps1`) are the early-warning net, and the request bodies should be re-checked against the Graph changelog periodically.
 
 ### H.2 Detection: the unified `rules` collection, NOT `detectionRules`
 `win32LobApp` exposes BOTH `detectionRules` (legacy `win32LobAppDetection`) and `rules` (unified `win32LobAppRule`). The current backend **ignores `detectionRules`** and rejects the create with `BadRequest: The Win32LobApp must have at least one detection rule specified` even though a perfectly valid `detectionRules` array was sent. Use `rules` with a `ruleType`:
@@ -1227,7 +1231,7 @@ WinGet is **strictly opt-in** (intake Q2). Use the app's native installer (MSI/E
 *explicitly* chose "WinGet package". Never assume, recommend, or auto-select it even if a WinGet package exists.
 Everything below applies only after that explicit choice.
 
-### I.1 Package discovery (replaces the Phase 0.3 silent-switch research)
+### I.1 Package discovery (replaces the Phase 1.3 silent-switch research)
 
 `Find-ADTWinGetPackage` comes from `PSAppDeployToolkit.WinGet`. Import it explicitly before calling
 (at discovery time on the build box — at deployment time the package's auto-loader handles it):
@@ -1336,7 +1340,7 @@ For a stable manifest `ProductCode`, use the direct GUID key (`HKLM:\...\Uninsta
 
 ## Appendix J: App logo - acquisition + verification
 
-The logo is uploaded separately (Intune **App information** tab / Phase 7.5); it is NOT part of the
+The logo is uploaded separately (Intune **App information** tab / Phase 9); it is NOT part of the
 `.intunewin` (no repack on logo change). Obtain the **REAL** application logo (PNG, transparent, >=512px,
 square preferred) → `<pkg>\Assets\<App>-Logo.png` AND a copy in `Output\<App>\`. **Never** ship the PSADT
 default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload script blocks them by SHA256).

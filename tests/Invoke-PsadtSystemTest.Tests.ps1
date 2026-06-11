@@ -1,3 +1,7 @@
+# SCOPE NOTE: these tests exercise the in-process logic (loop, detection-state, exit-code mapping). The
+# pwsh7 -> Windows PowerShell 5.1 re-exec branch (PSScheduledJob is 5.1-only) is bypassed via the
+# PSADT_SYSTEMTEST_NOREEXEC backdoor and is intentionally NOT unit-tested here - it depends on a real
+# elevated 5.1 host + Invoke-CommandAs and is covered by the manual DEV-VM run (SKILL.md Phase 6).
 BeforeAll {
     . "$PSScriptRoot/_helpers.ps1"
     Import-Module PowerShellGet -ErrorAction SilentlyContinue

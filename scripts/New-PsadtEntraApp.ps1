@@ -103,41 +103,11 @@ $WamScopes = @(
 $MsalVersions = @{ Client = '4.66.2'; Broker = '4.66.2'; Native = '0.16.2'; Abstractions = '6.35.0' }
 $MsalCacheRoot = Join-Path $env:LOCALAPPDATA 'PsadtIntune\msal'
 
-# --- Console UX helpers ------------------------------------------------------------------------------
+# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph; retry + PS7-safe) --------------------
+# This script keeps its own Invoke-WithRetry below (replication-lag retries, a different concern from the
+# shared HTTP-transient retry inside Invoke-Graph).
+. (Join-Path $PSScriptRoot '_GraphCommon.ps1')
 $script:step = 0
-function Write-Step([string]$msg) { $script:step++; Write-Host "`n[$script:step] $msg" -ForegroundColor Cyan }
-function Write-Ok  ([string]$msg) { Write-Host "    OK  $msg" -ForegroundColor Green }
-function Write-Info([string]$msg) { Write-Host "    $msg" -ForegroundColor Gray }
-function Write-Warn2([string]$msg){ Write-Host "    !   $msg" -ForegroundColor Yellow }
-function Write-Fail([string]$msg) { Write-Host "    X   $msg" -ForegroundColor Red }
-
-# --- Cross-version Graph error extraction ------------------------------------------------------------
-function Get-GraphError($err) {
-    # PS7 puts the response body in ErrorDetails.Message; PS5.1 needs the response stream.
-    $body = $null
-    if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
-        $body = $err.ErrorDetails.Message
-    } elseif ($err.Exception.Response) {
-        try {
-            $s = $err.Exception.Response.GetResponseStream()
-            $body = (New-Object System.IO.StreamReader($s)).ReadToEnd()
-        } catch { }
-    }
-    if ($body) {
-        try { return (ConvertFrom-Json $body).error } catch { return [pscustomobject]@{ code = 'Unknown'; message = $body } }
-    }
-    return [pscustomobject]@{ code = 'Unknown'; message = $err.Exception.Message }
-}
-
-function Invoke-Graph {
-    param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers)
-    $p = @{ Method = $Method; Uri = $Uri; Headers = $Headers; ErrorAction = 'Stop' }
-    if ($PSBoundParameters.ContainsKey('Body') -and $null -ne $Body) {
-        $p.Body = ($Body | ConvertTo-Json -Depth 10)
-        $p.ContentType = 'application/json'
-    }
-    return Invoke-RestMethod @p
-}
 
 function ConvertFrom-JwtPayload([string]$jwt) {
     $payload = $jwt.Split('.')[1].Replace('-', '+').Replace('_', '/')
@@ -169,8 +139,8 @@ function Get-DeviceCodeToken([string]$Tenant, [string]$Scope) {
             } -ErrorAction Stop
         } catch {
             # OAuth token endpoint errors return { "error": "<string>", "error_description": "..." }
-            # so Get-GraphError returns the string directly (not a .code/.message object).
-            $e = Get-GraphError $_
+            # so Get-GraphErr returns the string directly (not a .code/.message object).
+            $e = Get-GraphErr $_
             $eCode = if ($e -is [string]) { $e } else { [string]$e.error }
             switch ($eCode) {
                 'authorization_pending'  { continue }
@@ -317,8 +287,10 @@ function Invoke-WithRetry([scriptblock]$Action, [int]$Tries = 6, [int]$DelaySec 
     for ($i = 1; $i -le $Tries; $i++) {
         try { return & $Action }
         catch {
-            $e = Get-GraphError $_
-            $transient = $e.code -in 'Request_ResourceNotFound', 'ResourceNotFound', 'Authorization_RequestDenied' -and $i -lt $Tries
+            $e = Get-GraphErr $_
+            # NOTE the parentheses: -in binds tighter than -and, so without them the array literal makes
+            # this an always-truthy expression (it would retry EVERY error, including real denials).
+            $transient = (($e.code -in @('Request_ResourceNotFound', 'ResourceNotFound', 'Authorization_RequestDenied')) -and ($i -lt $Tries))
             if (-not $transient) { throw }
             Write-Info "  ... not replicated yet ($($e.code)), retry $i/$Tries in ${DelaySec}s"
             Start-Sleep -Seconds $DelaySec
@@ -424,7 +396,7 @@ foreach ($r in $roles) {
         } | Out-Null
         Write-Ok "$($r.value): granted and admin-consented."
     } catch {
-        $e = Get-GraphError $_
+        $e = Get-GraphErr $_
         if ($e.code -eq 'Authorization_RequestDenied') {
             $pending++
             Write-Fail "$($r.value): cannot grant consent (need Global Admin or Privileged Role Admin)."

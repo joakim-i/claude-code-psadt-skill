@@ -1,6 +1,22 @@
 <#
-.SYNOPSIS  Reads the PSADT skill config and reports any missing required fields.
-.OUTPUTS   PSCustomObject: Exists(bool), Config(object|null), Missing(string[]), Path(string)
+.SYNOPSIS
+    Reads the PSADT skill config (config.json) and reports any missing required fields.
+
+.DESCRIPTION
+    Read-only. Loads config.json from -SkillRoot and validates the required keys (paths.*, language.*,
+    author.*). When intune.uploadEnabled is set, the credential reference is also checked; when
+    intune.groups.enabled is set, the group naming scheme (intune.groups.naming) is validated. Returns a
+    structured object - it never throws on a missing field, it lists them in .Missing for the caller to act on.
+
+.PARAMETER SkillRoot
+    The skill root folder that contains config.json. Defaults to the parent of this script's directory.
+
+.OUTPUTS
+    PSCustomObject: Exists(bool), Config(object|null), Missing(string[]), Path(string)
+
+.EXAMPLE
+    $c = & Get-PsadtConfig.ps1
+    if (-not $c.Exists -or $c.Missing) { ... run the setup wizard ... }
 #>
 [CmdletBinding()]
 param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))

@@ -1,7 +1,24 @@
 <#
-.SYNOPSIS  Creates/updates config.json (partial merge) and DPAPI-encrypts the client secret.
-.PARAMETER Updates  Hashtable of dotted-path -> value (e.g. @{ 'paths.packageRoot'='c:\p' }).
-.PARAMETER Secret   SecureString; DPAPI-encrypted (CurrentUser) to secret.dpapi. Never logged/returned.
+.SYNOPSIS
+    Creates/updates config.json (deep partial merge) and, optionally, DPAPI-encrypts the client secret.
+
+.DESCRIPTION
+    Merges -Updates into the existing config.json (creating it if absent), using dotted-path keys so a single
+    leaf or a whole sub-tree can be set without rewriting the file. A -Secret is DPAPI-encrypted (CurrentUser
+    scope) to the secret.dpapi file and is never logged or returned. Writes config.json as UTF-8.
+
+.PARAMETER SkillRoot
+    The skill root folder that holds config.json (and secret.dpapi). Defaults to the parent of this script.
+
+.PARAMETER Updates
+    Hashtable of dotted-path -> value, e.g. @{ 'paths.packageRoot' = 'c:\p'; 'intune.groups.naming' = @{...} }.
+    Intermediate nodes are created as needed; existing siblings are preserved.
+
+.PARAMETER Secret
+    SecureString client secret; DPAPI-encrypted (CurrentUser) to secret.dpapi. Never logged or returned.
+
+.EXAMPLE
+    Set-PsadtConfig.ps1 -Updates @{ 'author.person' = 'Jane Doe'; 'author.company' = 'Contoso' }
 #>
 [CmdletBinding()]
 param(

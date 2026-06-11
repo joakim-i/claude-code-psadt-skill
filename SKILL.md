@@ -6,7 +6,7 @@ description: Use when the user wants to build, package, test, troubleshoot, or d
 # PSADT v4.x Deployment Skill
 
 Drive a PSADT v4.x Intune Win32 package end-to-end. Depth lives in
-`references/PSADTv4-Deployment-Guide.md` (Phases 0-7 + Appendix A-M) and in each script's comment-based
+`references/PSADTv4-Deployment-Guide.md` (Phases 0-12 + Appendix A-M) and in each script's comment-based
 help. Keep THIS file as the control plane; load guide sections on demand instead of inlining them.
 
 ## Operating mode (autonomy first)
@@ -53,25 +53,28 @@ researched defaults; recommended option first.
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
-   Entra groups (Phase 7.6, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
+   Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
 3. **SYSTEM-test consent** - it installs the real software as SYSTEM; recommend a VM/snapshot before the
    first install.
 4. **Upload confirm** - show the dry-run summary + the exact `On -Execute` action; confirm before `-Execute`.
 
 Context follow-ups (coexistence, processes-to-close, architecture) come situationally, also via
-`AskUserQuestion`. Full 30-question intake catalogue and per-question option sets: guide Phase 0.2.
+`AskUserQuestion`. Full 30-question intake catalogue and per-question option sets: guide Phase 1.2.
 
 ## Conventions (BINDING - never skip, never reorder priorities)
 
-- **Language split.** Scripts (`Invoke-AppDeployToolkit.ps1`, Extensions, Detection) = **English, 7-bit
-  ASCII only** - comments AND strings included, so no umlaut/non-ASCII ever lands in a `.ps1` (encoding
-  cleanliness; see Phase 5). Dossier/report = **`language.dossier`, default German with REAL umlauts**
-  (ä ö ü ß - this is Company-Portal end-user text; do NOT spell out ae/oe/ue). Real umlauts come from the
-  description metadata; the template stays ASCII via HTML entities and the file is written UTF-8. The
-  Company-Portal app description block = **Markdown** (that field is Markdown-only, not HTML).
+- **Language split.** Two rules, never mixed.
+  - **Scripts** (`Invoke-AppDeployToolkit.ps1`, Extensions, Detection) = **English, 7-bit ASCII only** -
+    comments AND strings, so no umlaut/non-ASCII ever lands in a `.ps1` (encoding cleanliness; see Phase 5).
+  - **Dossier/report** = **`language.dossier`, default German with REAL umlauts** (ä ö ü ß - Company-Portal
+    end-user text; do NOT spell out ae/oe/ue). The umlauts come from the description metadata; the template
+    stays ASCII via HTML entities and the file is written UTF-8. The Company-Portal app description block =
+    **Markdown** (that field is Markdown-only, not HTML).
 - **Output location.** `.intunewin` ALWAYS to `<paths.outputRoot>\<App[-Version]>\` (from `Get-PsadtConfig`,
   no hard-coded default), one sub-folder per app. Detection script + `Intune-Dossier.html` live in that same
   folder (everything together). Never a `_IntuneOutput` folder beside the package; never `-o` inside `-c`.
+- **Logging.** PSADT writes its session log to `C:\Windows\Logs\Software\` by default (the IME-readable
+  location) - leave it there, don't redirect. Keep each Phase-6 SYSTEM-test log for audit.
 - **Author / version / changelog.** `AppScriptAuthor` in `$adtSession` = `author.person, author.company`
   (config, no hard-coded author). First script version ALWAYS `0.1` (not 1.0.0); substantive changes bump it,
   cosmetic edits need not. Mandatory changelog in the `.NOTES` header, one line per version:
@@ -93,8 +96,8 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
 - **Upload (opt-in).** Fill EVERY objective App-info field; NEVER auto-impose category / branded notes /
   featured; NEVER DELETE an older version (new versions coexist via `-OnExisting CreateNewCoexist`; the user
   wires supersedence). Group assignment is opt-in too: NEVER auto-assign a group unless the user chose it at
-  Gate 2 AND `intune.groups.enabled` - then create/assign via the configured naming scheme (Phase 7.6 / App. M).
-- **Test before upload (gate).** Install + Uninstall must pass the Phase 5.5 SYSTEM test before any upload.
+  Gate 2 AND `intune.groups.enabled` - then create/assign via the configured naming scheme (Phase 10 / App. M).
+- **Test before upload (gate).** Install + Uninstall must pass the Phase 6 SYSTEM test before any upload.
   Can't run it (no elevation / VM)? STOP before `-Execute` and hand back the exact command. Never upload
   untested.
 
@@ -118,12 +121,12 @@ Else run the wizard (ask only missing values via `AskUserQuestion`): paths (`pac
 direct-upload bootstrap: `New-PsadtEntraApp.ps1` once (WAM sign-in, device-code fallback; creates the
 `PSADT Intune Upload` Entra app + admin-consents `DeviceManagementApps.ReadWrite.All` + stores the credential;
 needs Global Admin / Privileged Role Admin). Add `-IncludeGroupManagement` to also consent the least-privilege
-group roles (`Group.Create` + `GroupMember.Read.All`) when the user wants opt-in group assignment (Phase 7.6 /
+group roles (`Group.Create` + `GroupMember.Read.All`) when the user wants opt-in group assignment (Phase 10 /
 guide Appendix M) - off by default. Manual portal route: `references/app-registration.md`.
 Re-triggerable via "psadt setup".
 
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not at the
-end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from research. Catalogue: guide Phase 0.2.
+end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from research. Catalogue: guide Phase 1.2.
 
 **Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher roles
 concurrently, collect into the Phase-0.3 findings table, and show it before scaffold. Record per deployment
@@ -133,7 +136,7 @@ installer) follow guide Appendix K instead of the normal installer flow. On a ne
 release notes for renamed/deprecated/changed commands before building - never adopt a version by number alone;
 verify the actually-used cmdlets with `Get-Command -Module PSAppDeployToolkit` (and `Get-Help <cmdlet>
 -Parameter *` for changed params). If divergent, recommend `Update-Module PSAppDeployToolkit -Force` before
-scaffold. Queries + version-sync check: guide Phase 0.1 + 0.3, Appendix D. WinGet package discovery (search
+scaffold. Queries + version-sync check: guide Phase 1.1 + 1.3, Appendix D. WinGet package discovery (search
 by name first; `Find-ADTWinGetPackage`): guide Appendix I.1.
 
 **Phase 3 - Scaffold.** `New-ADTTemplate -Destination <root> -Name <App>` (4.1.x takes only
@@ -141,14 +144,14 @@ by name first; `Find-ADTWinGetPackage`): guide Appendix I.1.
 afterwards). Fill `$adtSession` (AppVendor/Name/Version/Arch/Lang/Revision, success + reboot exit codes,
 `AppScriptVersion='0.1'`, `AppScriptAuthor` from config) and the `.NOTES` changelog. Verify the module
 version == `DeployAppScriptVersion`. WinGet: provision the extension module into the package, `Files\` stays
-empty, `AppVersion='Latest'` (or pinned) (guide Appendix I.2). Field details: guide Phase 1.
+empty, `AppVersion='Latest'` (or pinned) (guide Appendix I.2). Field details: guide Phase 3.
 
 **Phase 4 - Customize all three hooks.** User drops the installer in `<pkg>\Files\`; fill
 `Install/Uninstall/Repair-ADTDeployment` from the research. Per-installer patterns
 (MSI/EXE/InstallShield/Squirrel), `Show-ADTInstallationWelcome -CloseProcesses ... -CheckDiskSpace` before
 install, Start-Menu-only shortcuts, uninstall cleanup (tasks/services/firewall/registry - only the APP
 sub-key, NEVER the vendor root; keep user data by default), and async-retry loops (services need 30-60s after
-msiexec): guide Phase 2. WinGet hook patterns: guide Appendix I.3. The GUID-to-`-ProductCode` rule (a GUID to
+msiexec): guide Phase 4. WinGet hook patterns: guide Appendix I.3. The GUID-to-`-ProductCode` rule (a GUID to
 `-FilePath` throws `InvalidFilePathParameterValue` → 60001) applies to Uninstall AND Repair - Repair is the
 usual miss. Custom helpers ALWAYS in `PSAppDeployToolkit.Extensions.psm1`, never the main script.
 
@@ -159,44 +162,49 @@ parse/encoding-only, so a private `Write-Log` there is NOT flagged), top-level-s
 acid-test (all three `*-ADTDeployment` hooks defined + Extensions helpers actually called), and the
 GUID-to-`-FilePath` anti-pattern. **`Overall` must be GREEN to proceed** (any RED = STOP, even if Install looks
 fine - else Company-Portal uninstall returns 0x80070001). Encoding fix (em-dash/smart-quote replace + UTF-8 BOM)
-and per-check explanations: guide Phase 3 (3.1-3.6) + Appendix C. WinGet adds a module-present check and MUST use
+and per-check explanations: guide Phase 5 (5.1-5.6) + Appendix C. WinGet adds a module-present check and MUST use
 the acid-test stub (a live acid test would install): guide Appendix I.4.
 
-**Phase 5.5 - SYSTEM test loop (opt-in; BINDING gate for upload).** `Invoke-PsadtSystemTest.ps1` runs one
+**Phase 6 - SYSTEM test loop (opt-in; BINDING gate for upload).** `Invoke-PsadtSystemTest.ps1` runs one
 action as SYSTEM (via `Invoke-CommandAs`, self-healed from PSGallery; needs an elevated session) and returns
 `{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated }`. It fixes
-nothing - YOU drive the loop and fix between runs. Gate 3 consent + VM/snapshot first; hard cap
+nothing - YOU drive the loop and fix between runs. **Prerequisites (all required):** Windows PowerShell 5.1
+(`PSScheduledJob`, which `Invoke-CommandAs -AsSystem` relies on, is 5.1-only - pwsh 7 cannot run it), an
+ELEVATED session, the `Invoke-CommandAs` module, and ideally a VM/snapshot; on some hosts PSADT itself fails
+to import under WinPS 5.1 (60008), so run the gate on a DEV VM. Gate 3 consent + VM/snapshot first; hard cap
 `test.maxIterations` (default 5). Loop: Install → verify detection → Uninstall → verify clean (services,
 tasks, app reg key, install dir, firewall; neighbour products of the same vendor still present) → Reinstall.
 Converged → leave the machine per `test.endState` (default uninstalled), keep each PSADT log for audit. Cap
 reached → blockade protocol, hand back. If you cannot run it (no elevation), STOP before any upload.
 Diagnosis mapping: Troubleshooting table + guide Appendix A / G.
 
-**Phase 6 - Package.** Paths from config (`paths.intuneWinAppUtil`, provisioned by `Get-IntuneWinAppUtil.ps1`):
+**Phase 7 - Package.** Paths from config (`paths.intuneWinAppUtil`, provisioned by `Get-IntuneWinAppUtil.ps1`):
 `& $tool -c <pkg> -s 'Invoke-AppDeployToolkit.exe' -o <outputRoot>\<App[-Version]> -q`. `-o` lies outside `-c`
 (different trees - never nest, or the old `.intunewin` lands recursively in the package). Copy the detection
 script + `Intune-Dossier.html` alongside. Verify the `.intunewin` (`SetupFile` = Invoke-AppDeployToolkit.exe,
-size). Code + extractability check: guide Phase 4.
+size). Code + extractability check: guide Phase 7.
 
-**Phase 7 - HTML report (ALWAYS) + real logo.** Fill `$meta` (key list: guide Appendix F.0), then
+**Phase 8 - HTML report (ALWAYS) + real logo.** Fill `$meta` (key list: guide Appendix F.0), then
 `New-PsadtReport.ps1 -Metadata $meta -LogoPath <logo> -OutputPath <Output\<App>\Intune-Dossier.html>`.
 Mandatory return codes: `0, 1707 Success; 3010 soft / 1641 hard reboot; 1618 retry; 60001, 60008 Failed` +
 researched installer codes. App description = Markdown, dossier language, real umlauts (structure/template:
 guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet dossier additions
 (WinGet >= 1.7.10582 requirement, registry/file detection note): guide Appendix I.6.
 
-**Phase 7.5 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
+**Phase 9 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
 `On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1` (via `Get-GraphToken.ps1`): MSI →
 `-MsiProductCode '{GUID}'`; EXE/non-MSI → `-DetectionScriptPath` (a detection rule accepts only
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
 installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment
-is the separate opt-in Phase 7.6); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit
-in-place, optional `-SupersedesAppId`). Uses `/beta` (v1.0 drops `displayVersion`). `-MinWindowsRelease` is a
+is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit
+in-place, optional `-SupersedesAppId` - the script wires SUPERSEDENCE only, NOT app dependencies
+(`-DependsOnAppId` relationships are portal-wired). Uses `/beta` (v1.0 drops `displayVersion`; `/beta` is
+unversioned so win32LobApp request shapes can shift - the upload-shape unit tests guard this). `-MinWindowsRelease` is a
 `ValidateSet` of backend-accepted release IDs (`1607..2004`); labels like `21H2`/`22H2` are server-rejected -
 set a higher minimum in the portal (guide H.11). The script refuses the PSADT default logo (SHA256) unless
 `-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
 
-**Phase 7.6 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
+**Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
 `Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents required,available`
 creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by
@@ -206,13 +214,15 @@ ambiguous/duplicate names are skipped, not guessed. Needs `Group.Create` + `Grou
 app (`New-PsadtEntraApp.ps1 -IncludeGroupManagement`). Feed the returned `Groups` into the dossier Assignments
 table. Full schema + naming rules + permission model: guide Appendix M.
 
-**Phase 8 - Test sequence (DEV VM, all three types).** Install (ps1 → exe → SYSTEM via
+**Phase 11 - Test sequence (DEV VM, all three types).** Install (ps1 → exe → SYSTEM via
 `Invoke-PsadtSystemTest.ps1`, PsExec fallback) → Uninstall on the SAME VM + post-uninstall verification
 (detection empty, services/tasks/firewall gone, install dir gone, vendor neighbours intact) → Repair after a
 reinstall. Then an Intune test group (1 device, Required; check the PSADT log + AppWorkload.log for `Installed`
-/ `Uninstalled` and `Close-ADTSession` exit 0). Steps + checks: guide Phase 6 / Appendix E.
+/ `Uninstalled` and `Close-ADTSession` exit 0). Steps + checks: guide Phase 11 / Appendix E.
 
-**Phase 9 - Rollout.** All three green → pilot 24-48h → staged production. Guide Phase 7.
+**Phase 12 - Rollout.** All three green → pilot 24-48h → staged production. **Rollback** = re-point the
+assignment (and supersedence) at the retained prior version - it was never deleted (`CreateNewCoexist`).
+Guide Phase 12.
 
 ## Troubleshooting quick reference
 
@@ -244,36 +254,23 @@ IntuneManagementExtension.log.
 
 Full symptom/HRESULT catalogue: guide Appendix A.
 
-## Anti-patterns (top offenders; full list: guide Appendix B + I.7)
+## Anti-patterns (TOP offenders only; FULL list: guide Appendix B + I.7 + K.7)
 
-- v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...).
-- Em-dash/smart quote anywhere in a script file (comments too) - 7-bit ASCII only; the #1 encoding failure.
-- UTF-8 without BOM when non-ASCII is present; top-level code outside try/catch.
-- `-o` inside `-c`; not mapping 60001/60008 as Failed; "runs locally = runs in Intune" without the acid test.
-- GUID to `Start-ADTMsiProcess -FilePath` (Uninstall AND Repair - Repair is the usual miss).
-- Mixed detection (script + file rule in parallel); MSI ProductCode rule for a non-MSI app (use a script rule).
-- Shipping the PSADT default `AppIcon.png`/Banner as the logo; trusting `IsAlphaPixelFormat` for transparency.
-- Defaulting to / recommending / auto-selecting WinGet (strictly opt-in); `-Scope User`;
-  `Get-ADTWinGetPackage` in detection; skipping `Repair-ADTWinGetPackageManager`; bare WinGet cmdlets without
-  the `ADT` prefix.
-- DELETING/overwriting the older version on upload; branding in `notes`; auto-assigning category/featured, or
-  assigning groups when the user did NOT opt in at Gate 2; filling only the minimum App-info fields.
-- Baking `%version%` into the group naming scheme by reflex (breaks version-independent group reuse for
-  supersedence); putting a `%intent%` token in a name (no such token - the intent is the template key, App. M).
-- Skipping the HTML report; hand-assembling the report HTML; HTML in the Markdown-only description field.
-- Desktop icons; Extensions logic in the main script; reflexive 120-min install time (60 is usually right);
-  fallback deletes on the first negative async response (build a retry loop).
-- Uploading without the Phase 5.5 SYSTEM test passing Install + Uninstall.
-- Hand-rolling the pre-flight gate instead of running `scripts/Invoke-PsadtPreflight.ps1` (the GREEN/RED verdict
-  is the gate); for a script-only fix, treating it like a vendor installer instead of following Appendix K.
-- A blanket `exit 0` in a fix/remediation script, or a detection tag written in a `finally` - both report GREEN
-  on failure. The exit code must reflect "could it run" (couldn't-run -> non-zero), detection the real end-state;
-  never block enrollment by lying about the exit code (guide K.7).
+- v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...); any em-dash/smart-quote or
+  other non-ASCII in a `.ps1` (comments too) without a UTF-8 BOM - the #1 encoding failure. Top-level code outside try/catch.
+- GUID to `Start-ADTMsiProcess -FilePath` (Uninstall AND Repair - Repair is the usual miss) -> 60001.
+- `-o` inside `-c`; not mapping 60001/60008 as Failed; "runs locally = runs in Intune" without the acid test;
+  hand-rolling the pre-flight instead of `scripts/Invoke-PsadtPreflight.ps1` (its GREEN/RED verdict IS the gate).
+- Shipping the PSADT default `AppIcon.png`/Banner as the logo; skipping or hand-assembling the HTML report.
+- Auto-imposing user/org choices on upload (category/featured/`notes`), or assigning groups when the user did
+  NOT opt in at Gate 2; DELETING the older version instead of `-OnExisting CreateNewCoexist`.
+- Uploading without the Phase 6 SYSTEM test passing; a blanket `exit 0` or a `finally`-written detection tag in a
+  fix script - both report GREEN on failure (guide K.7).
 
 ## Reference lookup
 
-`references/PSADTv4-Deployment-Guide.md` - Phase 0.2 intake catalogue · 0.1/0.3 research · Phase 1 scaffold ·
-2 customize · 3 pre-flight · 4 package · 5 Intune config fields · 6 test · 7 rollout · App. A errors ·
+`references/PSADTv4-Deployment-Guide.md` - Phase 1.2 intake catalogue · 1.1/1.3 research · Phase 3 scaffold ·
+4 customize · 5 pre-flight · 7 package · 8-9 Intune config fields · 11 test · 12 rollout · App. A errors ·
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
 learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
 **K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·
