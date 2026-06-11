@@ -42,4 +42,11 @@ if ($cfg.intune -and $cfg.intune.uploadEnabled) {
         if (-not (Test-Path (Join-Path $SkillRoot $ref))) { $missing.Add('intune.secret') }
     }
 }
+if ($cfg.intune -and $cfg.intune.groups -and $cfg.intune.groups.enabled) {
+    $nm = $cfg.intune.groups.naming
+    if (-not $nm) { $missing.Add('intune.groups.naming') }
+    elseif (-not ($nm.required -or $nm.available -or $nm.uninstall)) {
+        $missing.Add('intune.groups.naming (need at least one of required/available/uninstall)')
+    }
+}
 [pscustomobject]@{ Exists = $true; Config = $cfg; Missing = $missing.ToArray(); Path = $configPath }

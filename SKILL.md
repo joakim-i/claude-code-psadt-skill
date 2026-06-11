@@ -6,7 +6,7 @@ description: Use when the user wants to build, package, test, troubleshoot, or d
 # PSADT v4.x Deployment Skill
 
 Drive a PSADT v4.x Intune Win32 package end-to-end. Depth lives in
-`references/PSADTv4-Deployment-Guide.md` (Phases 0-7 + Appendix A-J) and in each script's comment-based
+`references/PSADTv4-Deployment-Guide.md` (Phases 0-7 + Appendix A-M) and in each script's comment-based
 help. Keep THIS file as the control plane; load guide sections on demand instead of inlining them.
 
 ## Operating mode (autonomy first)
@@ -52,7 +52,8 @@ researched defaults; recommended option first.
    auto-select WinGet even if a package exists. If WinGet is chosen, follow guide Appendix I.
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
-   the installer type.
+   the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
+   Entra groups (Phase 7.6, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
 3. **SYSTEM-test consent** - it installs the real software as SYSTEM; recommend a VM/snapshot before the
    first install.
 4. **Upload confirm** - show the dry-run summary + the exact `On -Execute` action; confirm before `-Execute`.
@@ -90,8 +91,9 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
 - **All three deployment types from the start** (Install / Uninstall / Repair), each acid-tested - even if
   only install is needed today, Company-Portal uninstall needs a filled Uninstall hook.
 - **Upload (opt-in).** Fill EVERY objective App-info field; NEVER auto-impose category / branded notes /
-  featured / group assignment; NEVER DELETE an older version (new versions coexist via
-  `-OnExisting CreateNewCoexist`; the user wires supersedence).
+  featured; NEVER DELETE an older version (new versions coexist via `-OnExisting CreateNewCoexist`; the user
+  wires supersedence). Group assignment is opt-in too: NEVER auto-assign a group unless the user chose it at
+  Gate 2 AND `intune.groups.enabled` - then create/assign via the configured naming scheme (Phase 7.6 / App. M).
 - **Test before upload (gate).** Install + Uninstall must pass the Phase 5.5 SYSTEM test before any upload.
   Can't run it (no elevation / VM)? STOP before `-Execute` and hand back the exact command. Never upload
   untested.
@@ -115,7 +117,9 @@ Else run the wizard (ask only missing values via `AskUserQuestion`): paths (`pac
 `Get-PsadtModule.ps1`, `Get-IntuneWinAppUtil.ps1`, and for WinGet only `Get-WinGetModule.ps1`. Optional
 direct-upload bootstrap: `New-PsadtEntraApp.ps1` once (WAM sign-in, device-code fallback; creates the
 `PSADT Intune Upload` Entra app + admin-consents `DeviceManagementApps.ReadWrite.All` + stores the credential;
-needs Global Admin / Privileged Role Admin). Manual portal route: `references/app-registration.md`.
+needs Global Admin / Privileged Role Admin). Add `-IncludeGroupManagement` to also consent the least-privilege
+group roles (`Group.Create` + `GroupMember.Read.All`) when the user wants opt-in group assignment (Phase 7.6 /
+guide Appendix M) - off by default. Manual portal route: `references/app-registration.md`.
 Re-triggerable via "psadt setup".
 
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not at the
@@ -185,10 +189,22 @@ guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet do
 `On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1` (via `Get-GraphToken.ps1`): MSI →
 `-MsiProductCode '{GUID}'`; EXE/non-MSI → `-DetectionScriptPath` (a detection rule accepts only
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
-installed, nothing when not). Fill every objective field; impose no category/notes/featured/group; never
-DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit in-place, optional
-`-SupersedesAppId`). Uses `/beta` (v1.0 drops `displayVersion`). The script refuses the PSADT default logo
-(SHA256) unless `-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
+installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment
+is the separate opt-in Phase 7.6); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit
+in-place, optional `-SupersedesAppId`). Uses `/beta` (v1.0 drops `displayVersion`). `-MinWindowsRelease` is a
+`ValidateSet` of backend-accepted release IDs (`1607..2004`); labels like `21H2`/`22H2` are server-rejected -
+set a higher minimum in the portal (guide H.11). The script refuses the PSADT default logo (SHA256) unless
+`-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
+
+**Phase 7.6 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
+ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
+`Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents required,available`
+creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by
+default so a new version reuses the same groups; `%version%` is an opt-in that breaks that) and assigns the app
+(intents required/available/uninstall). Idempotent; never deletes a group or another app's assignment;
+ambiguous/duplicate names are skipped, not guessed. Needs `Group.Create` + `GroupMember.Read.All` on the upload
+app (`New-PsadtEntraApp.ps1 -IncludeGroupManagement`). Feed the returned `Groups` into the dossier Assignments
+table. Full schema + naming rules + permission model: guide Appendix M.
 
 **Phase 8 - Test sequence (DEV VM, all three types).** Install (ps1 → exe → SYSTEM via
 `Invoke-PsadtSystemTest.ps1`, PsExec fallback) → Uninstall on the SAME VM + post-uninstall verification
@@ -222,6 +238,9 @@ IntuneManagementExtension.log.
 | `displayVersion` empty after upload | v1.0 backend drops it | write on `/beta`; guide H |
 | upload `403` on probe/create | app consent missing/ineffective | re-run `New-PsadtEntraApp.ps1`; guide H |
 | detection rule rejected (`property may not be set ... used for app detection`) | requirement-only props on a detection rule | keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent`; guide H.2 |
+| upload `BadRequest: Unknown MinimumSupportedWindowsRelease` | `-MinWindowsRelease` value the backend rejects (e.g. `21H2`/`22H2`) | use a backend-accepted ID `1607..2004`; set a higher min in the portal; guide H.11 |
+| assignment `Group assignment is not enabled` | `intune.groups` absent/`enabled=false` in the resolved config | configure `intune.groups` (App. M) / point `-SkillRoot` at the install holding the config |
+| assignment denied on group lookup/create (`Authorization`) | upload app lacks `GroupMember.Read.All` / `Group.Create` | `New-PsadtEntraApp.ps1 -IncludeGroupManagement` (Global Admin); guide M.1 |
 
 Full symptom/HRESULT catalogue: guide Appendix A.
 
@@ -237,8 +256,10 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - Defaulting to / recommending / auto-selecting WinGet (strictly opt-in); `-Scope User`;
   `Get-ADTWinGetPackage` in detection; skipping `Repair-ADTWinGetPackageManager`; bare WinGet cmdlets without
   the `ADT` prefix.
-- DELETING/overwriting the older version on upload; branding in `notes`; auto-assigning category/featured/group;
-  filling only the minimum App-info fields.
+- DELETING/overwriting the older version on upload; branding in `notes`; auto-assigning category/featured, or
+  assigning groups when the user did NOT opt in at Gate 2; filling only the minimum App-info fields.
+- Baking `%version%` into the group naming scheme by reflex (breaks version-independent group reuse for
+  supersedence); putting a `%intent%` token in a name (no such token - the intent is the template key, App. M).
 - Skipping the HTML report; hand-assembling the report HTML; HTML in the Markdown-only description field.
 - Desktop icons; Extensions logic in the main script; reflexive 120-min install time (60 is usually right);
   fallback deletes on the first negative async response (build a retry loop).
@@ -255,4 +276,5 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 2 customize · 3 pre-flight · 4 package · 5 Intune config fields · 6 test · 7 rollout · App. A errors ·
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
 learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
-**K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches**.
+**K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·
+**M group assignment (opt-in: config, naming, permissions)**.
