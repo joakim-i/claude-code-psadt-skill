@@ -159,11 +159,14 @@ psadt-deploy/
 │  ├─ Get-IntuneWinAppUtil.ps1      content-prep tool (self-heal)
 │  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
 │  ├─ Update-PsadtSkill.ps1         self-update from GitHub
+│  ├─ Invoke-PsadtPreflight.ps1     pre-flight GREEN/RED gate (Phase 5)
 │  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 6)
-│  ├─ New-PsadtReport.ps1           HTML package report (Phase 7, always)
+│  ├─ New-PsadtReport.ps1           HTML package report (Phase 8, always)
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
-│  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 9)
+│  ├─ _GraphCommon.ps1              shared Graph helpers (3 upload scripts)
+│  ├─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 9)
+│  └─ Invoke-IntuneAppAssignment.ps1 opt-in Entra group assignment (Phase 10)
 ├─ references/   guide (App. A-M) + Report-Template.html + app-registration.md
 ├─ tests/        Pester suite for the scripts
 ├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
