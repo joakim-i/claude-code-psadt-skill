@@ -57,7 +57,11 @@ param(
     [string]$AppVersion = '',
     [string]$InstallCommandLine   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent',
     [string]$UninstallCommandLine = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent',
+    # MSI GUIDs: accept the bare or brace-wrapped 8-4-4-4-12 form; reject anything else at param binding
+    # (a malformed ProductCode otherwise only fails later, server-side, as an opaque detection-rule error).
+    [ValidatePattern('^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$')]
     [string]$MsiProductCode,
+    [ValidatePattern('^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$')]
     [string]$MsiUpgradeCode,
     [ValidateSet('perMachine','perUser','dualPurpose')][string]$MsiPackageType = 'perMachine',
     # Detection alternative for non-MSI apps (EXE installers etc.): a PowerShell detection script
@@ -102,44 +106,9 @@ if ([string]::IsNullOrWhiteSpace($Notes)) {
     } catch {}
 }
 
-# --- Console UX -------------------------------------------------------------------------------------
+# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph; retry + PS7-safe) -------------------
+. (Join-Path $PSScriptRoot '_GraphCommon.ps1')
 $script:step = 0
-function Write-Step([string]$m){ $script:step++; Write-Host "`n[$script:step] $m" -ForegroundColor Cyan }
-function Write-Ok  ([string]$m){ Write-Host "    OK  $m" -ForegroundColor Green }
-function Write-Info([string]$m){ Write-Host "    $m" -ForegroundColor Gray }
-
-function Get-GraphErr($err){
-    $body = $null
-    if ($err.ErrorDetails -and $err.ErrorDetails.Message) { $body = $err.ErrorDetails.Message }
-    elseif ($err.Exception.Response) {
-        try { $s = $err.Exception.Response.GetResponseStream(); $body = (New-Object IO.StreamReader($s)).ReadToEnd() } catch {}
-    }
-    if ($body) { try { return (ConvertFrom-Json $body).error } catch { return [pscustomobject]@{ code='Unknown'; message=$body } } }
-    return [pscustomobject]@{ code='Unknown'; message=$err.Exception.Message }
-}
-
-function Invoke-Graph {
-    param([string]$Method,[string]$Uri,$Body,[hashtable]$Headers)
-    $p = @{ Method=$Method; Uri=$Uri; Headers=$Headers; ErrorAction='Stop' }
-    if ($PSBoundParameters.ContainsKey('Body') -and $null -ne $Body) {
-        $p.Body = ($Body | ConvertTo-Json -Depth 20); $p.ContentType = 'application/json'
-    }
-    # Additive transient-failure retry: 429 (throttling) + 5xx, honouring Retry-After (max 4 attempts).
-    # The request itself (method/uri/body) is unchanged - this only retries a failed send.
-    for ($attempt = 1; ; $attempt++) {
-        try { return Invoke-RestMethod @p }
-        catch {
-            $status = $null
-            try { $status = [int]$_.Exception.Response.StatusCode } catch {}
-            if ($attempt -ge 4 -or -not ($status -eq 429 -or ($status -ge 500 -and $status -le 599))) { throw }
-            $retryAfter = 0
-            try { $retryAfter = [int]$_.Exception.Response.Headers['Retry-After'] } catch {}
-            $wait = if ($retryAfter -gt 0) { $retryAfter } else { [int][Math]::Min(30, [Math]::Pow(2, $attempt)) }
-            Write-Info "Graph $status - transient, retrying in ${wait}s (attempt $attempt)..."
-            Start-Sleep -Seconds $wait
-        }
-    }
-}
 
 # =====================================================================================================
 Write-Host "Intune Win32 upload (Graph) - $DisplayName" -ForegroundColor White

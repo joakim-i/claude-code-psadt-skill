@@ -149,7 +149,13 @@ $pkgRev        = Get-Val 'PkgRev' '01'
 $scriptVersion = Get-Val 'ScriptVersion' '0.1'
 $created       = Get-Val 'Created' (Get-Date -Format 'yyyy-MM-dd')
 $author        = Get-Val 'Author' ''
-$psadtVersion  = Get-Val 'PsadtVersion' '4.1.8'
+# Default the PSADT version from the ACTUALLY INSTALLED module, not a literal that silently goes stale
+# on the next PSADT update; '4.1.8' is only the last-resort fallback when the module isn't present.
+$psadtInstalled = try {
+    (Get-Module -ListAvailable PSAppDeployToolkit -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending | Select-Object -First 1).Version.ToString()
+} catch { $null }
+$psadtVersion  = Get-Val 'PsadtVersion' $(if ($psadtInstalled) { $psadtInstalled } else { '4.1.8' })
 $moduleVersion = Get-Val 'ModuleVersion' $psadtVersion
 
 $subDe   = Get-Val 'SubDe' "Intune Win32 &middot; PSADT v$psadtVersion Paket-Report"
@@ -299,33 +305,29 @@ $cmds = Get-Val 'Cmdlets' @('Show-ADTInstallationWelcome', 'Start-ADTMsiProcess'
 $cmdChips = @(foreach ($c in $cmds) { "          <span class=`"chip`">$(Esc $c)</span>" }) -join "`n"
 
 # ----------------------------------------------------------------------------- pre-flight
+# Default = NOT RUN (neutral). Real results arrive via -Metadata Preflight; without them the report must
+# NOT show a synthetic PASS (honest reporting - green-by-default would hide checks that never ran).
 $defaultPf = @(
-    @{ Title = 'Encoding'; Cls = 'ok'; De = 'UTF-8 mit BOM &middot; 0 Nicht-ASCII-Zeichen im Skript'; En = 'UTF-8 with BOM &middot; 0 non-ASCII characters in the script'; BDe = 'bestanden'; BEn = 'passed' }
-    @{ Title = 'Parser'; Cls = 'ok'; De = 'PARSE_OK &middot; keine Syntaxfehler'; En = 'PARSE_OK &middot; no syntax errors'; BDe = 'bestanden'; BEn = 'passed' }
-    @{ Title = 'Acid-Test Install'; Cls = 'ok'; De = 'Launcher findet und l&auml;dt das Skript'; En = 'Launcher finds and loads the script'; BDe = 'bestanden'; BEn = 'passed' }
-    @{ Title = 'Acid-Test Uninstall'; Cls = 'ok'; De = 'Launcher OK'; En = 'Launcher OK'; BDe = 'bestanden'; BEn = 'passed' }
-    @{ Title = 'Acid-Test Repair'; Cls = 'ok'; De = 'Launcher OK'; En = 'Launcher OK'; BDe = 'bestanden'; BEn = 'passed' }
-    @{ Title = 'v3-Cmdlet-Scan'; Cls = 'ok'; De = 'keine v3-Altnamen gefunden'; En = 'no v3 legacy names found'; BDe = 'sauber'; BEn = 'clean' }
+    @{ Title = 'Pre-flight'; Cls = 'neutral'; De = 'keine Ergebnisse &uuml;bergeben &middot; nicht ausgef&uuml;hrt'; En = 'no results supplied &middot; not run'; BDe = 'nicht ausgef&uuml;hrt'; BEn = 'not run' }
 )
 $pf = Get-Val 'Preflight' $defaultPf
 $pfChecks = @(foreach ($c in $pf) {
-    $sym = switch ($c.Cls) { 'ok' { '&#10003;' } 'warn' { '!' } default { '&times;' } }
-    $bcls = switch ($c.Cls) { 'ok' { 'b-ok' } 'warn' { 'b-warn' } default { 'b-fail' } }
+    $sym = switch ($c.Cls) { 'ok' { '&#10003;' } 'warn' { '!' } 'neutral' { '&ndash;' } default { '&times;' } }
+    $bcls = switch ($c.Cls) { 'ok' { 'b-ok' } 'warn' { 'b-warn' } 'neutral' { 'b-neut' } default { 'b-fail' } }
     "          <div class=`"check`"><span class=`"ci $($c.Cls)`">$sym</span><div><div class=`"ct`">$(Esc $c.Title)</div><div class=`"cd`" data-de=`"$(AttrHtml $c.De)`" data-en=`"$(AttrHtml $c.En)`">$($c.De)</div></div><span class=`"badge $bcls`" data-de=`"$(AttrHtml $c.BDe)`" data-en=`"$(AttrHtml $c.BEn)`">$($c.BDe)</span></div>"
 }) -join "`n"
 
 # ----------------------------------------------------------------------------- system test
+# Default = NOT RUN (neutral) - same honesty rule as pre-flight: no synthetic "Success" rows.
 $defaultSt = @(
-    @{ StepDe = '1. Install (als SYSTEM)'; StepEn = '1. Install (as SYSTEM)'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'Success' }
-    @{ StepDe = '2. Uninstall'; StepEn = '2. Uninstall'; Exit = '0'; Detection = 'not-installed &middot; leftover-clean'; Cls = 'b-ok'; Result = 'Success' }
-    @{ StepDe = '3. Reinstall'; StepEn = '3. Reinstall'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'Success' }
+    @{ StepDe = 'SYSTEM-Test'; StepEn = 'SYSTEM test'; Exit = '-'; Detection = '&ndash;'; Cls = 'b-neut'; Result = 'not run' }
 )
 $st = Get-Val 'SystemTest' $defaultSt
 $stRows = @(foreach ($s in $st) {
     "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td><td>$($s.Detection)</td><td><span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span></td></tr>"
 }) -join "`n"
-$stNoteDe = Get-Val 'SystemTestNoteDe' 'Install &rarr; Uninstall &rarr; Reinstall validiert. PSADT-Logs im Output-Ordner abgelegt (Audit-Trail).'
-$stNoteEn = Get-Val 'SystemTestNoteEn' 'Install &rarr; uninstall &rarr; reinstall validated. PSADT logs stored in the output folder (audit trail).'
+$stNoteDe = Get-Val 'SystemTestNoteDe' 'Keine SYSTEM-Test-Ergebnisse &uuml;bergeben &ndash; der SYSTEM-Test wurde nicht ausgef&uuml;hrt (kein Beleg).'
+$stNoteEn = Get-Val 'SystemTestNoteEn' 'No SYSTEM-test results supplied &ndash; the SYSTEM test was not run (no evidence).'
 
 # ----------------------------------------------------------------------------- token map
 $logoSrc = Get-LogoDataUri -Path $LogoPath -AppName $appName

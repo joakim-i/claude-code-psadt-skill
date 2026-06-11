@@ -72,7 +72,8 @@ description until a task makes it relevant, then the full body loads on demand.
   logs + detection, and auto-fixes until green or a max-iteration cap. Runs locally and needs an elevated
   session; recommended on a VM/snapshot.
 - **Direct Intune upload via Microsoft Graph** *(opt-in)* — pushes the `.intunewin` straight to Intune as a
-  `win32LobApp` (app + logo, **no group assignment**), self-contained raw Graph, no third-party module. A
+  `win32LobApp` (app + logo; the uploader itself does **not** assign groups - that's the separate opt-in step
+  below), self-contained raw Graph, no third-party module. A
   one-time `New-PsadtEntraApp.ps1` bootstrap signs in via **WAM** (Windows broker), creates the Entra app,
   grants + admin-consents `DeviceManagementApps.ReadWrite.All`, and stores the credential — a
   **certificate** (preferred; no secret at rest, JWT client-assertion auth) or a DPAPI-encrypted client
@@ -139,6 +140,8 @@ On the first run (or when you say *"psadt setup"*), the skill walks a short wiza
 | `paths.intuneWinAppUtil` | Content-prep tool location (skill-managed by default) |
 | `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) |
 | `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
+| `intune.*` *(optional)* | Direct-upload block (`clientId` / `tenantId` / credential ref) - written by `New-PsadtEntraApp.ps1`, validated when `intune.uploadEnabled` |
+| `intune.groups.*` *(optional)* | Opt-in group assignment (`enabled` / `create` / `membershipType` / `naming`) - see guide Appendix M |
 
 `config.json` and `tools/` are **machine-local** and are never committed.
 
@@ -156,12 +159,12 @@ psadt-deploy/
 │  ├─ Get-IntuneWinAppUtil.ps1      content-prep tool (self-heal)
 │  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
 │  ├─ Update-PsadtSkill.ps1         self-update from GitHub
-│  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 5.5)
+│  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 6)
 │  ├─ New-PsadtReport.ps1           HTML package report (Phase 7, always)
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
-│  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 7.5)
-├─ references/   guide (App. A–J) + Report-Template.html + app-registration.md
+│  └─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 9)
+├─ references/   guide (App. A-M) + Report-Template.html + app-registration.md
 ├─ tests/        Pester suite for the scripts
 ├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
 ├─ config.json   (gitignored)  machine-local settings (intune.* block)
@@ -170,7 +173,7 @@ psadt-deploy/
 
 ## Status
 
-The core build/package/test/dossier workflow is in active use, and the **direct Intune upload** (Phase 7.5)
+The core build/package/test/dossier workflow is in active use, and the **direct Intune upload** (Phase 9)
 is implemented and verified against a live tenant. **Shipped:** first-run setup + config, self-healing
 prerequisites (PSADT module + content-prep tool), HTML deliverables, the opt-in SYSTEM test loop, the WAM
 Entra-app bootstrap, and the Graph win32LobApp uploader (coexistence-safe) — helper scripts verified via
@@ -210,13 +213,25 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.9.0 - 11.06.2026
+- **Audit cleanup** (quality / content / applicability+compatibility / tests). Highlights: shared
+  `scripts/_GraphCommon.ps1` (de-duplicates the 3 Graph scripts) + **28 new Pester tests** for the previously
+  untested upload/assignment/Entra-app/token scripts (suite now 74); fixed an `Invoke-WithRetry` precedence
+  bug (retried every error 6x) and PS7-fragile throttling reads; the HTML report no longer shows synthetic
+  "passed" rows when no pre-flight/SYSTEM-test results are supplied (neutral "not run") and derives the PSADT
+  version from the installed module; GUID `ValidatePattern` on the MSI codes.
+- **Phase numbering unified** across SKILL.md + guide into one integer scheme **0-12**; every Phase/Appendix
+  cross-reference re-verified. Anti-pattern list trimmed; SYSTEM-test prerequisites, `/beta` drift caveat,
+  rollback step, logging convention, and config help added. Guide `$adtSession` template `1.0.0`->`0.1` +
+  author-from-config; intro appendix index -> A-M.
+
 ### 0.8.1 - 11.06.2026
 - **Docs consistency.** Fixed a stale cross-reference in SKILL.md (the guide range said **Appendix A-J** but
   the guide now runs through **M** — K/L were added in 0.7.0 and M in 0.8.0 without updating it). Restored the
   **0.5.3** entry that was missing from this README changelog mirror (it was present in `CHANGELOG.md`).
 
 ### 0.8.0 - 11.06.2026
-- **Opt-in Entra group assignment, wired end-to-end.** New Phase 7.6 + `Invoke-IntuneAppAssignment.ps1`:
+- **Opt-in Entra group assignment, wired end-to-end.** New Phase 10 + `Invoke-IntuneAppAssignment.ps1`:
   create/reuse Entra security groups by a configured naming scheme (`intune.groups`) and assign the uploaded
   app (Required / Available / Uninstall). Read-only dry-run → confirm → execute; idempotent; never deletes a
   group or another app's assignment; ambiguous/duplicate names skipped. Least-privilege roles
@@ -291,13 +306,13 @@ Notable changes to the skill, newest first. Append-only — entries are never re
   *"psadt update"*.
 
 ### 0.4.0 - 06.06.2026
-- **WinGet packaging support** (strictly opt-in, never the default) + **certificate-based auth** for the Phase 7.5
+- **WinGet packaging support** (strictly opt-in, never the default) + **certificate-based auth** for the Phase 9
   upload (no secret at rest) + MSI icon-table logo fallback + device-code first-poll fix. Contributed by
   **@joakim-i** (PR #4), reviewed and hardened before merge. See [CHANGELOG.md](CHANGELOG.md).
 
 ### 0.3.2 - 06.06.2026
-- **Test-before-upload is now a binding gate:** Install + Uninstall must pass the Phase 5.5 SYSTEM test before
-  any Phase 7.5 upload. If it can't be run (no elevation / VM), stop before upload and hand back the command.
+- **Test-before-upload is now a binding gate:** Install + Uninstall must pass the Phase 6 SYSTEM test before
+  any Phase 9 upload. If it can't be run (no elevation / VM), stop before upload and hand back the command.
 
 ### 0.3.1 - 06.06.2026
 - `Invoke-IntuneWin32Upload.ps1` gains **`-DetectionScriptPath`** (PowerShell-script detection rule) for
@@ -306,7 +321,7 @@ Notable changes to the skill, newest first. Append-only — entries are never re
   (guide Appendix H.2).
 
 ### 0.3.0 - 06.06.2026
-- **Direct upload** (`scripts/Invoke-IntuneWin32Upload.ps1`, Phase 7.5): self-contained raw-Graph
+- **Direct upload** (`scripts/Invoke-IntuneWin32Upload.ps1`, Phase 9): self-contained raw-Graph
   `win32LobApp` upload (parse `.intunewin` → token → probe → idempotency → create/update → content → SAS
   block-blob upload via HttpClient → commit → activate → categories → supersedence). Read-only dry-run by
   default; `-Execute` to write.
@@ -319,7 +334,7 @@ Notable changes to the skill, newest first. Append-only — entries are never re
 - Fixed the Repair `-FilePath`→`-ProductCode` example; reference guide gains **Appendix H**.
 
 ### 0.2.0 - 05.06.2026
-- **Automated SYSTEM test loop** (`scripts/Invoke-PsadtSystemTest.ps1`, Phase 5.5): install → uninstall →
+- **Automated SYSTEM test loop** (`scripts/Invoke-PsadtSystemTest.ps1`, Phase 6): install → uninstall →
   reinstall the package as the SYSTEM account via `Invoke-CommandAs`, with agent-driven auto-fix until
   green or a max-iteration cap. Opt-in; elevated session required.
 - Phase 8 now prefers `Invoke-CommandAs -AsSystem` for SYSTEM-context testing (PsExec kept as a fallback).

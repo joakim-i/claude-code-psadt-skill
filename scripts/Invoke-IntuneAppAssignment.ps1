@@ -49,42 +49,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'
 
-# --- Console UX ----------------------------------------------------------------------------------
+# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph; retry + PS7-safe) ----------------
+. (Join-Path $PSScriptRoot '_GraphCommon.ps1')
 $script:step = 0
-function Write-Step([string]$m) { $script:step++; Write-Host "`n[$script:step] $m" -ForegroundColor Cyan }
-function Write-Ok  ([string]$m) { Write-Host "    OK  $m" -ForegroundColor Green }
-function Write-Info([string]$m) { Write-Host "    $m" -ForegroundColor Gray }
-
-function Get-GraphErr($err) {
-    $body = $null
-    if ($err.ErrorDetails -and $err.ErrorDetails.Message) { $body = $err.ErrorDetails.Message }
-    elseif ($err.Exception.Response) {
-        try { $s = $err.Exception.Response.GetResponseStream(); $body = (New-Object IO.StreamReader($s)).ReadToEnd() } catch {}
-    }
-    if ($body) { try { return (ConvertFrom-Json $body).error } catch { return [pscustomobject]@{ code = 'Unknown'; message = $body } } }
-    return [pscustomobject]@{ code = 'Unknown'; message = $err.Exception.Message }
-}
-
-function Invoke-Graph {
-    param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers)
-    $p = @{ Method = $Method; Uri = $Uri; Headers = $Headers; ErrorAction = 'Stop' }
-    if ($PSBoundParameters.ContainsKey('Body') -and $null -ne $Body) {
-        $p.Body = ($Body | ConvertTo-Json -Depth 20); $p.ContentType = 'application/json'
-    }
-    for ($attempt = 1; ; $attempt++) {
-        try { return Invoke-RestMethod @p }
-        catch {
-            $status = $null
-            try { $status = [int]$_.Exception.Response.StatusCode } catch {}
-            if ($attempt -ge 4 -or -not ($status -eq 429 -or ($status -ge 500 -and $status -le 599))) { throw }
-            $retryAfter = 0
-            try { $retryAfter = [int]$_.Exception.Response.Headers['Retry-After'] } catch {}
-            $wait = if ($retryAfter -gt 0) { $retryAfter } else { [int][Math]::Min(30, [Math]::Pow(2, $attempt)) }
-            Write-Info "Graph $status - transient, retrying in ${wait}s (attempt $attempt)..."
-            Start-Sleep -Seconds $wait
-        }
-    }
-}
 
 # --- Config --------------------------------------------------------------------------------------
 $cfg = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config

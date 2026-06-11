@@ -90,8 +90,6 @@ Describe 'New-PsadtReport' {
     }
 
     It 'preserves real umlauts from the description Markdown' {
-        & $script:gen -Metadata @{ AppName = 'X'; DescMdDe = "**Gr&ouml;&szlig;e** mit echten Umlauten: Strae uber Fuge" } -OutputPath $script:out
-        $bytes = [System.IO.File]::ReadAllText($script:out, [System.Text.Encoding]::UTF8)
         # the literal umlaut characters survive a UTF-8 round trip
         & $script:gen -Metadata @{ AppName = 'X'; DescMdDe = "Gr" + [char]0xF6 + [char]0xDF + "e" } -OutputPath $script:out
         $txt = [System.IO.File]::ReadAllText($script:out, [System.Text.Encoding]::UTF8)

@@ -2,6 +2,52 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.9.0 — 2026-06-11 — Audit cleanup (quality, content, applicability/compatibility, tests)
+
+A three-auditor review surfaced concrete defects; the maintainer decided per-category which to fix. Security
+items (secret hygiene) were deliberately out of scope; the one correctness bug was included.
+
+### Added
+- **Test coverage for the four previously-untested high-risk scripts** (upload, assignment, Entra-app,
+  Get-GraphToken) plus `_GraphCommon` - 28 new Pester cases (param validation, dry-run = no writes,
+  idempotency, `-MinWindowsRelease` ValidateSet, DPAPI round-trip, retry-only-on-transient, and a regression
+  guard for the precedence bug below). Full suite is now 74 cases.
+- **`scripts/_GraphCommon.ps1`** - shared `Invoke-Graph` / `Get-GraphErr` / `Write-*` plus cross-version
+  `Get-GraphStatusCode` + `Get-GraphRetryAfterSeconds`, dot-sourced by the three Graph scripts (the request/
+  retry/error logic was copy-pasted three times, which let a bug drift into one copy).
+
+### Fixed
+- **Operator-precedence bug** in `New-PsadtEntraApp.ps1` `Invoke-WithRetry`: `-in ... -and` without parentheses
+  was an always-truthy array, so EVERY error was retried 6x (including real permission denials). Parenthesized
+  and regression-tested.
+- **PS7-fragile throttling.** `Retry-After` / HTTP-status reads now work on Windows PowerShell 5.1 AND
+  PowerShell 7 (the old `[int]$Headers['Retry-After']` threw on PS7, silently dropping the server's hint).
+- **Report "green by default."** `New-PsadtReport.ps1` no longer renders synthetic `passed` rows for
+  pre-flight / SYSTEM-test when no real results are supplied - it shows a neutral "not run" state (the same
+  honesty rule as the 0.7.5 exit-code fix). The PSADT version default now comes from the installed module, not
+  the literal `4.1.8`.
+- **GUID validation** (`ValidatePattern`) on `-MsiProductCode` / `-MsiUpgradeCode` (a malformed code previously
+  failed late, server-side).
+- **Guide self-contradictions**: the `$adtSession` template showed `AppScriptVersion='<1.0.0>'` + a literal
+  author (contradicting the BINDING "always 0.1, author from config" rule); the intro appendix index listed
+  only A-G with wrong labels. Both corrected to `0.1`/config and the full A-M list.
+
+### Changed
+- **Phase numbering unified** across SKILL.md and the guide into ONE integer scheme **0-12** (Setup, Intake,
+  Research, Scaffold, Hooks, Pre-flight, SYSTEM test, Package, Report, Upload, Groups, Test, Rollout).
+  Previously the two files used offset numbers (SKILL 0-9 with `.5` sub-phases, guide 0-7), so guide
+  references to "Phase 5.5 / 7.5" pointed at the wrong sections. Every Phase + Appendix cross-reference was
+  re-verified - all resolve.
+- **Redundancy trimmed**: SKILL.md anti-pattern list reduced to the top offenders + a pointer to guide
+  B/I.7/K.7; the dense language-split convention split into two clear rules.
+- **Docs added**: SYSTEM-test prerequisites stated prominently (WinPS 5.1 + elevation + `Invoke-CommandAs` +
+  VM); `/beta` drift caveat (guide H.1); upload wires supersedence but NOT app dependencies (`-DependsOnAppId`
+  is portal-only); explicit rollback step (Phase 12); PSADT log-path logging convention; comment-based help
+  completed on Get/Set-PsadtConfig; README setup table documents the optional `intune.*` / `intune.groups.*`
+  blocks, fixes "App. A-J" -> "A-M", and clarifies the uploader does no group assignment (separate opt-in).
+- **Test harness**: `Run-All.ps1` fails fast with a clear message if Pester < 5; removed a dead invocation in
+  the report umlaut test; documented the SYSTEM-test re-exec path as untested-by-design.
+
 ## 0.8.1 — 2026-06-11 — Docs consistency fixes
 
 ### Fixed
