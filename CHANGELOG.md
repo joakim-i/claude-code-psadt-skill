@@ -2,6 +2,15 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.8.1 — 2026-06-11 — Docs consistency fixes
+
+### Fixed
+- **Stale cross-reference in SKILL.md.** The intro pointed at the guide as "Phases 0-7 + Appendix **A-J**",
+  but the guide now runs through **Appendix M** - K/L were added in 0.7.0 and M in 0.8.0 without updating this
+  range. Now reads "Appendix A-M". (Phases 0-7 is correct: those are the guide's phase headers.)
+- **Missing 0.5.3 entry in the README changelog mirror.** `CHANGELOG.md` had the 0.5.3 release but the README's
+  mirrored "Changelog" section skipped it. Restored, so the two changelogs match entry-for-entry.
+
 ## 0.8.0 — 2026-06-11 — Opt-in Entra group assignment (wired end-to-end) + min-OS upload fix
 
 ### Added

@@ -210,6 +210,11 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.8.1 - 11.06.2026
+- **Docs consistency.** Fixed a stale cross-reference in SKILL.md (the guide range said **Appendix A-J** but
+  the guide now runs through **M** — K/L were added in 0.7.0 and M in 0.8.0 without updating it). Restored the
+  **0.5.3** entry that was missing from this README changelog mirror (it was present in `CHANGELOG.md`).
+
 ### 0.8.0 - 11.06.2026
 - **Opt-in Entra group assignment, wired end-to-end.** New Phase 7.6 + `Invoke-IntuneAppAssignment.ps1`:
   create/reuse Entra security groups by a configured naming scheme (`intune.groups`) and assign the uploaded
@@ -259,6 +264,13 @@ Notable changes to the skill, newest first. Append-only — entries are never re
   loaded on demand. Intake restructured into **4 decision gates** (researchable facts become stated
   assumptions, not questions); explicit **sub-agent roles** (Researcher×3 / Builder / Reviewer) with GREEN
   handoff gates; a single **blockade protocol** for errors. No binding rule or behaviour dropped.
+
+### 0.5.3 - 09.06.2026
+- **Guide code-fences are now English/ASCII.** Anglicized every German comment, string literal and placeholder
+  living **inside** PowerShell/text code fences in the guide (and the inline-code placeholders in the Appendix
+  F.1 table) — snippets get copied verbatim into deployment scripts, where the binding rule is English + 7-bit
+  ASCII. German explanatory **prose** and the **F.2 Company-Portal dossier template** deliberately stay German
+  (legitimate `language.dossier` end-user text). No script/tooling code changed.
 
 ### 0.5.2 - 08.06.2026
 - **HTML package report is now always generated** (upload or not) by `scripts/New-PsadtReport.ps1` from the
