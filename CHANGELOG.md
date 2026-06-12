@@ -2,6 +2,29 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.9.1 — 2026-06-12 — Applicability/portability drift cleanup (docs + instructions)
+
+Follow-up to the 0.9.0 audit: a consistency pass found documented behaviour that no longer matched the
+implementation. No script logic changed.
+
+### Fixed
+- **Dead config keys removed.** SKILL.md Phase 6 described the SYSTEM-test loop as honouring
+  `test.maxIterations` / `test.endState`, but neither key exists in any script or in the `Get-PsadtConfig`
+  schema. The cap is now stated as a hard count of 5 the orchestrator owns, and the end-state as "uninstalled"
+  in plain text - no phantom config.
+- **Stale phase numbers.** SKILL.md handoff rules said "Upload (7.5)" and `references/app-registration.md`
+  said "Phase 7.5"; both now correctly read **Phase 9** (the unified 0-12 numbering from 0.9.0).
+- **README project tree.** `New-PsadtReport.ps1` was labelled "Phase 7" (now **Phase 8**), and three shipped
+  scripts were missing from the tree: `Invoke-PsadtPreflight.ps1` (Phase 5), `Invoke-IntuneAppAssignment.ps1`
+  (Phase 10), `_GraphCommon.ps1` (shared Graph helpers).
+
+### Changed
+- **`superpowers` is now an optional methodology layer, not a hard dependency.** The Researcher/Reviewer roles
+  referenced `superpowers:dispatching-parallel-agents` and `superpowers:requesting-code-review` as `REQUIRED`,
+  but that plugin was never declared as a prerequisite anywhere. Those references are now "prefer if installed;
+  else fall back to the native Agent tool / `/code-review`", the workflow no longer depends on the plugin, and
+  the README Requirements list documents it as an optional (recommended) enhancement.
+
 ## 0.9.0 — 2026-06-11 — Audit cleanup (quality, content, applicability/compatibility, tests)
 
 A three-auditor review surfaced concrete defects; the maintainer decided per-category which to fix. Security

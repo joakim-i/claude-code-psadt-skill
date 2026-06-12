@@ -34,13 +34,14 @@ independent work; never let a gate be crossed without its handoff.
 
 | Role | Run as | Owns | Handoff (gate) |
 |---|---|---|---|
-| **Researcher x3** | parallel agents (REQUIRED: superpowers:dispatching-parallel-agents) | (a) PSADT version + command-change check, (b) app silent/uninstall/repair switches, (c) Intune pitfalls | structured findings table, shown before scaffold |
+| **Researcher x3** | parallel agents (prefer `superpowers:dispatching-parallel-agents` if installed; else fan out directly with the Agent tool) | (a) PSADT version + command-change check, (b) app silent/uninstall/repair switches, (c) Intune pitfalls | structured findings table, shown before scaffold |
 | **Builder** | inline (you) | scaffold + fill all 3 hooks + Extensions module | a package that passes pre-flight |
-| **Reviewer/QA** | agent (REQUIRED: superpowers:requesting-code-review for the script review) | pre-flight verdict, SYSTEM-test diagnosis, report + logo sanity | GREEN gate, or a blockade report |
+| **Reviewer/QA** | agent (prefer `superpowers:requesting-code-review` if installed; else a direct review agent / `/code-review`) | pre-flight verdict, SYSTEM-test diagnosis, report + logo sanity | GREEN gate, or a blockade report |
 
-**Hard handoff rules:** Builder may not package until Reviewer returns GREEN on pre-flight. Upload (7.5) may
+**Hard handoff rules:** Builder may not package until Reviewer returns GREEN on pre-flight. Upload (Phase 9) may
 not run until Reviewer returns GREEN on the SYSTEM test (Install + Uninstall). Researchers run concurrently
-and return before scaffold.
+and return before scaffold. The `superpowers:*` skills above are an OPTIONAL methodology layer: if that plugin
+is not installed, fan out / review with the native Agent tool (and `/code-review`) - the workflow never depends on it.
 
 ## Decision gates (the ONLY AskUserQuestion moments)
 
@@ -172,10 +173,10 @@ nothing - YOU drive the loop and fix between runs. **Prerequisites (all required
 (`PSScheduledJob`, which `Invoke-CommandAs -AsSystem` relies on, is 5.1-only - pwsh 7 cannot run it), an
 ELEVATED session, the `Invoke-CommandAs` module, and ideally a VM/snapshot; on some hosts PSADT itself fails
 to import under WinPS 5.1 (60008), so run the gate on a DEV VM. Gate 3 consent + VM/snapshot first; hard cap
-`test.maxIterations` (default 5). Loop: Install → verify detection → Uninstall → verify clean (services,
-tasks, app reg key, install dir, firewall; neighbour products of the same vendor still present) → Reinstall.
-Converged → leave the machine per `test.endState` (default uninstalled), keep each PSADT log for audit. Cap
-reached → blockade protocol, hand back. If you cannot run it (no elevation), STOP before any upload.
+of 5 iterations (you own the count - there is no config key for it). Loop: Install → verify detection →
+Uninstall → verify clean (services, tasks, app reg key, install dir, firewall; neighbour products of the same
+vendor still present) → Reinstall. Converged → leave the machine uninstalled (the default end-state), keep each
+PSADT log for audit. Cap reached → blockade protocol, hand back. If you cannot run it (no elevation), STOP before any upload.
 Diagnosis mapping: Troubleshooting table + guide Appendix A / G.
 
 **Phase 7 - Package.** Paths from config (`paths.intuneWinAppUtil`, provisioned by `Get-IntuneWinAppUtil.ps1`):

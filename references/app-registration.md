@@ -1,6 +1,6 @@
 # Entra app registration — manual portal fallback
 
-The direct Intune upload (SKILL.md Phase 7.5) authenticates as an **app-only** Entra application with the
+The direct Intune upload (SKILL.md Phase 9) authenticates as an **app-only** Entra application with the
 Microsoft Graph **application** permission `DeviceManagementApps.ReadWrite.All`.
 
 **Preferred path:** run `pwsh scripts/New-PsadtEntraApp.ps1` once. It signs you in interactively via **WAM**
@@ -97,7 +97,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $($tok.Token)" } `
 'OK - DeviceManagementApps.ReadWrite.All is effective.'
 ```
 
-A `403` here means consent/permission is missing — revisit step 2. Then proceed with Phase 7.5
+A `403` here means consent/permission is missing — revisit step 2. Then proceed with Phase 9
 (`Invoke-IntuneWin32Upload.ps1`, dry-run first).
 
 > Rotation: when the secret expires, create a new one (step 3) and re-run step 4. The app, its consent, and

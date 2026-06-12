@@ -111,6 +111,10 @@ description until a task makes it relevant, then the full body loads on demand.
   portal route: `references/app-registration.md`.
 - For the optional **WinGet packaging** path: nothing extra — `scripts/Get-WinGetModule.ps1` auto-downloads
   the `PSAppDeployToolkit.WinGet` extension into `tools/` (and into the package) the first time you choose WinGet.
+- **Optional (recommended): the [superpowers](https://github.com/obra/superpowers) plugin.** If installed, the
+  skill uses `superpowers:dispatching-parallel-agents` for the research fan-out and `superpowers:requesting-code-review`
+  for the Reviewer gate. It is **not required** — without it the skill falls back to the native Agent tool and
+  `/code-review`; nothing in the workflow depends on the plugin.
 
 ## Installation
 
@@ -215,6 +219,16 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.9.1 - 12.06.2026
+- **Applicability/portability drift cleanup** (docs + instructions; no script logic changed). Removed the
+  phantom `test.maxIterations` / `test.endState` config keys from SKILL.md Phase 6 (the cap is a hard count of
+  5 the orchestrator owns); fixed stale "Phase 7.5" -> **Phase 9** in SKILL.md + `app-registration.md`; fixed
+  the README project tree (report **Phase 8**, added the 3 missing scripts `Invoke-PsadtPreflight`,
+  `Invoke-IntuneAppAssignment`, `_GraphCommon`).
+- **`superpowers` downgraded from hard `REQUIRED` to optional/preferred.** The Researcher/Reviewer roles now
+  prefer `superpowers:*` if installed and otherwise fall back to the native Agent tool / `/code-review`; the
+  Requirements list documents it as an optional (recommended) enhancement. The workflow no longer depends on it.
 
 ### 0.9.0 - 11.06.2026
 - **Audit cleanup** (quality / content / applicability+compatibility / tests). Highlights: shared
